@@ -183,7 +183,7 @@ func (d *Driver) Join(r *netapi.JoinRequest) (*netapi.JoinResponse, error) {
 		routeAdd(ipa, iface)
 	}
 
-	respIface := &netapi.InterfaceName{
+	respIface := netapi.InterfaceName{
 		SrcName:   tempName,
 		DstPrefix: "eth",
 	}
@@ -208,7 +208,7 @@ func (d *Driver) Join(r *netapi.JoinRequest) (*netapi.JoinResponse, error) {
 func (d *Driver) Leave(r *netapi.LeaveRequest) error {
 	log.Debugf("Leave %s:%s", r.NetworkID, r.EndpointID)
 
-	ep := driver.network.endpoints[r.EndpointID]
+	ep := d.network.endpoints[r.EndpointID]
 
 	link, err := netlink.LinkByName(ep.iface)
 
