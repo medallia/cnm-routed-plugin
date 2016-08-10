@@ -1,18 +1,17 @@
 package routed
 
 import (
-  "fmt"
+	"fmt"
 	"net"
 
-  log "github.com/Sirupsen/logrus"
-  netapi "github.com/docker/go-plugins-helpers/network"
+	log "github.com/Sirupsen/logrus"
+	netapi "github.com/docker/go-plugins-helpers/network"
 	"github.com/vishvananda/netlink"
 )
 
 const (
 	defaultNetwork = "10.46.0.0/16"
 	defaultGateway = "10.46.0.1/32"
-
 )
 
 type routedEndpoint struct {
@@ -41,7 +40,7 @@ type driver struct {
 
 type Driver struct {
 	netapi.Driver
-  version string
+	version string
 	network *routedNetwork
 	pool    *routedPool
 	mtu     int
@@ -54,17 +53,17 @@ func NewDriver(version string) (*Driver, error) {
 	gateway, _ := netlink.ParseIPNet(defaultGateway)
 
 	d := &Driver{
-    version : version,
-	  pool : &routedPool{
-		  id:           "myPool",
-		  subnet:       network,
-		  allocatedIPs: make(map[string]bool),
-		  gateway:      gateway,
-	  },
-	  network : &routedNetwork{
-		  endpoints: make(map[string]*routedEndpoint),
-	  },
-  }
+		version: version,
+		pool: &routedPool{
+			id:           "myPool",
+			subnet:       network,
+			allocatedIPs: make(map[string]bool),
+			gateway:      gateway,
+		},
+		network: &routedNetwork{
+			endpoints: make(map[string]*routedEndpoint),
+		},
+	}
 
 	d.pool.allocatedIPs[fmt.Sprintf("%s", gateway)] = true
 
@@ -81,8 +80,8 @@ func (d *Driver) Createnetwork(r *netapi.CreateNetworkRequest) error {
 	log.Debugf("Create network request: %+v", r)
 
 	d.network = &routedNetwork{id: r.NetworkID, endpoints: make(map[string]*routedEndpoint)}
-	
-  log.Infof("Create network %s", r.NetworkID)
+
+	log.Infof("Create network %s", r.NetworkID)
 
 	return nil
 }
@@ -91,10 +90,10 @@ func (d *Driver) Deletenetwork(r *netapi.DeleteNetworkRequest) error {
 	log.Debugf("Delete network request: %+v", r)
 
 	d.network = nil
-	
-  log.Infof("Destroying network %s", r.NetworkID)
-	
-  return nil
+
+	log.Infof("Destroying network %s", r.NetworkID)
+
+	return nil
 }
 
 func (d *Driver) CreateEndpoint(r *netapi.CreateEndpointRequest) (*netapi.CreateEndpointResponse, error) {
@@ -111,17 +110,17 @@ func (d *Driver) CreateEndpoint(r *netapi.CreateEndpointRequest) (*netapi.Create
 	//	aliases = append(aliases, ip)
 	//}
 	addr, _ := netlink.ParseIPNet(reqIface.Address)
-	
-  ep := &routedEndpoint{
+
+	ep := &routedEndpoint{
 		ipv4Address: addr,
 		//ipAliases:   aliases,
 	}
-	
-  d.network.endpoints[endID] = ep
+
+	d.network.endpoints[endID] = ep
 
 	log.Infof("Creating endpoint %s %+v", endID, nil)
-	
-  return nil, nil
+
+	return nil, nil
 	//return &netapi.CreateEndpointResponse{}, nil
 }
 
@@ -131,8 +130,8 @@ func (d *Driver) DeleteEndpoint(r *netapi.DeleteEndpointRequest) error {
 	delete(d.network.endpoints, r.EndpointID)
 
 	log.Infof("Deleting endpoint %s", r.EndpointID)
-	
-  return nil
+
+	return nil
 }
 
 func (d *Driver) EndpointInfo(r *netapi.InfoRequest) (*netapi.InfoResponse, error) {
@@ -145,8 +144,8 @@ func (d *Driver) EndpointInfo(r *netapi.InfoRequest) (*netapi.InfoResponse, erro
 
 func (d *Driver) Join(r *netapi.JoinRequest) (*netapi.JoinResponse, error) {
 	log.Debugf("Join endpoint %s:%s to r.SandboxKey", r.NetworkID, r.EndpointID)
-	
-  tempName := r.EndpointID[:4]
+
+	tempName := r.EndpointID[:4]
 	hostName := "vethr" + r.EndpointID[:4]
 
 	veth := &netlink.Veth{
@@ -239,4 +238,3 @@ func routeAdd(ip *net.IPNet, iface netlink.Link) error {
 
 	return nil
 }
-
