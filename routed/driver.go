@@ -34,10 +34,6 @@ type routedPool struct {
 	allocatedIPs map[string]bool
 }
 
-type driver struct {
-	version string
-}
-
 type Driver struct {
 	netapi.Driver
 	version string
@@ -76,7 +72,7 @@ func (t *Driver) GetCapabilities() (*netapi.CapabilitiesResponse, error) {
 	return res, nil
 }
 
-func (d *Driver) Createnetwork(r *netapi.CreateNetworkRequest) error {
+func (d *Driver) CreateNetwork(r *netapi.CreateNetworkRequest) error {
 	log.Debugf("Create network request: %+v", r)
 
 	d.network = &routedNetwork{id: r.NetworkID, endpoints: make(map[string]*routedEndpoint)}
@@ -86,7 +82,7 @@ func (d *Driver) Createnetwork(r *netapi.CreateNetworkRequest) error {
 	return nil
 }
 
-func (d *Driver) Deletenetwork(r *netapi.DeleteNetworkRequest) error {
+func (d *Driver) DeleteNetwork(r *netapi.DeleteNetworkRequest) error {
 	log.Debugf("Delete network request: %+v", r)
 
 	d.network = nil
@@ -121,7 +117,7 @@ func (d *Driver) CreateEndpoint(r *netapi.CreateEndpointRequest) (*netapi.Create
 	log.Infof("Creating endpoint %s %+v", endID, nil)
 
 	return nil, nil
-	//return &netapi.CreateEndpointResponse{}, nil
+	return &netapi.CreateEndpointResponse{}, nil
 }
 
 func (d *Driver) DeleteEndpoint(r *netapi.DeleteEndpointRequest) error {
@@ -179,16 +175,16 @@ func (d *Driver) Join(r *netapi.JoinRequest) (*netapi.JoinResponse, error) {
 	iface, _ := netlink.LinkByName(hostName)
 	routeAdd(ep.ipv4Address, iface)
 
-	for _, ipa := range ep.ipAliases {
-		routeAdd(ipa, iface)
-	}
+	//for _, ipa := range ep.ipAliases {
+	//	routeAdd(ipa, iface)
+	//}
 
 	respIface := netapi.InterfaceName{
 		SrcName:   tempName,
 		DstPrefix: "eth",
 	}
 
-	sandboxRoute := netapi.StaticRoute{
+	sandboxRoute := &netapi.StaticRoute{
 		Destination: "0.0.0.0/0",
 		RouteType:   1, // CONNECTED
 		NextHop:     "",
@@ -197,7 +193,7 @@ func (d *Driver) Join(r *netapi.JoinRequest) (*netapi.JoinResponse, error) {
 	resp := &netapi.JoinResponse{
 		InterfaceName:         respIface,
 		DisableGatewayService: true,
-		StaticRoutes:          []netapi.StaticRoute{sandboxRoute},
+		StaticRoutes:          []*netapi.StaticRoute{sandboxRoute},
 	}
 
 	log.Infof("Join Request Response %+v", resp)
@@ -211,7 +207,6 @@ func (d *Driver) Leave(r *netapi.LeaveRequest) error {
 	ep := d.network.endpoints[r.EndpointID]
 
 	link, err := netlink.LinkByName(ep.iface)
-
 	if err == nil {
 		log.Debugf("Deleting host interface %s", ep.iface)
 		netlink.LinkDel(link)
