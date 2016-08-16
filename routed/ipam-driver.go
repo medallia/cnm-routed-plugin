@@ -67,7 +67,7 @@ func (driver *IpamDriver) GetDefaultAddressSpaces() (*ipamApi.AddressSpacesRespo
 		LocalDefaultAddressSpace:  "Testlocal",
 		GlobalDefaultAddressSpace: "TestRemote",
 	}
-	log.Infof("Get default addresse spaces: responded with %+v", res)
+	log.Infof("Get default address spaces: responded with %+v", res)
 	return res, nil
 }
 
@@ -110,7 +110,7 @@ func (d *IpamDriver) RequestAddress(r *ipamApi.RequestAddressRequest) (*ipamApi.
 		res := &ipamApi.RequestAddressResponse{
 			Address: addr,
 		}
-		log.Infof("Addresse request response: %+v", res)
+		log.Infof("Address request response: %+v", res)
 		return res, nil
 	}
 again:
@@ -131,7 +131,7 @@ again:
 		Address: fmt.Sprintf("%s", netIP),
 	}
 
-	log.Infof("Addresse request response: %+v", res)
+	log.Infof("Address request response: %+v", res)
 	return res, nil
 }
 
@@ -145,6 +145,6 @@ func (d *IpamDriver) ReleaseAddress(r *ipamApi.ReleaseAddressRequest) error {
 
 	delete(d.pool.allocatedIPs, ip)
 
-	log.Infof("Addresse release %s from %s", r.Address, r.PoolID)
+	log.Infof("Address release %s from %s", r.Address, r.PoolID)
 	return nil
 }

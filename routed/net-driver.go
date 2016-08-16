@@ -5,6 +5,7 @@
 package routed
 
 import (
+	"fmt"
 	"net"
 	"strings"
 	"sync"
@@ -31,11 +32,11 @@ type routedNetwork struct {
 }
 
 type routedEndpoint struct {
-	iface         string
-	macAddress    net.HardwareAddr
-	hostInterface string
-	ipv4Address   *net.IPNet
-	netFilter     *netFilter
+	hostInterfaceName  string
+	containerIfaceName string
+	macAddress         net.HardwareAddr
+	ipv4Address        *net.IPNet
+	netFilter          *netFilter
 }
 
 type NetDriver struct {
@@ -137,17 +138,17 @@ func (d *NetDriver) DeleteEndpoint(r *netApi.DeleteEndpointRequest) error {
 
 	// Try removal of link. Discard error: link pair might have
 	// already been deleted by sandbox delete.
-	link, err := netlink.LinkByName(ep.hostInterface)
+	link, err := netlink.LinkByName(ep.hostInterfaceName)
 	if err == nil {
-		log.Debugf("Deleting host interface %s", ep.hostInterface)
+		log.Debugf("Deleting host interface %s", ep.hostInterfaceName)
 		netlink.LinkDel(link)
 	} else {
-		log.Debugf("Can't find host interface: $s, %v ", ep.hostInterface, err)
+		log.Debugf("Can't find host interface: $s, %v ", ep.hostInterfaceName, err)
 	}
 
 	if ep.netFilter != nil {
 		if err := ep.netFilter.removeFiltering(); err != nil {
-			log.Warnf("Couldn't remove net filter rules for iface %s,%v", ep.hostInterface, err)
+			log.Warnf("Couldn't remove net filter rules for iface %s,%v", ep.hostInterfaceName, err)
 		}
 	}
 
@@ -165,28 +166,29 @@ func (d *NetDriver) Join(r *netApi.JoinRequest) (*netApi.JoinResponse, error) {
 
 	eid := r.EndpointID
 	network := d.network
+	options := r.Options
 
 	network.m.Lock()
 	defer network.m.Unlock()
 
 	// Generate host veth
-	vethName, err := generateIfaceName(vethPrefix + string(eid)[:4])
+	hostIfaceName, err := generateIfaceName(vethPrefix + string(eid)[:4])
 	if err != nil {
 		return nil, err
 	}
 
 	// Generate host veth
-	peerVethName, err := generateIfaceName(vethPrefix + string(eid)[:4])
+	containerIfaceName, err := generateIfaceName(vethPrefix + string(eid)[:4])
 	if err != nil {
 		return nil, err
 	}
 
 	veth := &netlink.Veth{
 		LinkAttrs: netlink.LinkAttrs{
-			Name:   vethName,
+			Name:   hostIfaceName,
 			TxQLen: 0,
 		},
-		PeerName: peerVethName,
+		PeerName: containerIfaceName,
 	}
 
 	log.Debugf("Adding link %+v", veth)
@@ -207,17 +209,23 @@ func (d *NetDriver) Join(r *netApi.JoinRequest) (*netApi.JoinResponse, error) {
 	}
 
 	ep := d.network.endpoints[eid]
-	ep.iface = vethName
+	ep.hostInterfaceName = hostIfaceName
+	ep.containerIfaceName = containerIfaceName
 
-	iface, _ := netlink.LinkByName(vethName)
+	iface, _ := netlink.LinkByName(hostIfaceName)
 	routeAdd(ep.ipv4Address, iface)
 
 	//for _, ipa := range ep.ipAliases {
 	//	routeAdd(ipa, iface)
 	//}
 
+	ep.netFilter = NewNetFilter(hostIfaceName, options)
+	if err := ep.netFilter.applyFiltering(); err != nil {
+		return nil, fmt.Errorf("could not add net filtering %v", err)
+	}
+
 	respIface := netApi.InterfaceName{
-		SrcName:   peerVethName,
+		SrcName:   containerIfaceName,
 		DstPrefix: ethPrefix,
 	}
 
