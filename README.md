@@ -1,6 +1,110 @@
 # docker-routed-plugin
 
-## Development env installation using Vagrant
+## Features
+
+Provides a transparent way to assign multiple IP addresses to a docker container. It's based on using standard routing
+protocols to share the information of where each container is running across a cluster. Thus not needing to have
+a distributed storage and separate processes as the source of truth. Currently using the [Quagga](http://www.nongnu.org/quagga) OSPF implementation.
+
+The regular veth pair creation is then replaced for the following sequence of events.
+
+- Creates a pair of veth.
+- Moves one to the container namespace.
+- Renames the container veth to eth0.
+- Adds route to 0.0.0.0/0 via eth0 in container.
+- Sets the requested IP addresses to the container eth0.
+- Adds route to container IP via veth0 in the host.
+
+Then the route to reach the container addresses is automatically propagated by the enabled routing protocol. In essence, each host in the cluster acts as a router.
+
+The configuration is quite simple, for example the following ospfd.conf file of Quagga allows to route the containers in the networks 10.112.0.0, 192.168.0.0 and 10.255.255.0 using the host eth1 interface. Any container with IP addresses in those networks, regardless the host where they are running, will be able to talk to each other.
+
+```
+! Bootstrap Config
+router ospf
+ ospf router-id 10.112.11.6
+ redistribute kernel
+ passive-interface default
+ no passive-interface eth1
+ network 10.112.0.0/12 area 0.0.0.0
+ network 192.168.0.0/16 area 0.0.0.0
+ network 10.255.255.0/24 area 0.0.0.0
+!
+log syslog
+!
+interface eth1
+!ip ospf network point-to-point
+!
+```
+
+To launch a container using the routed mode, you need to specify it and add a label containing the list of IP addresses you want to assign to a particular container.
+
+
+```bash
+docker run --it --net=routed --label io.docker.network.endpoint.ip4addresses="192.168.13.1,10.112.20.2" ubuntu
+```
+
+Also an 'ip-address' option is available to supply the addresses
+```bash
+docker run --it --net=routed --ip-address="192.168.13.1,10.112.20.2" ubuntu
+```
+
+## IP tables integration
+
+Works with the routed driver. Allows to specify what IPs are allowed to connect
+to the container.
+
+You specify it via the container label "io.docker.network.endpoint.ingressAllowed".
+For example:
+
+```bash
+docker run -it --net=routed --ip-address=192.168.13.13 --label io.docker.network.endpoint.ingressAllowed="1.1.1.1/24,2.2.2.2" ubuntu /bin/bash
+```
+
+The parameter accepts a comma separated list of values, which can be:
+
+  * Single IP
+  * IP Net (CIDR)
+  * IP Range (IP-IP)
+
+The host machine is expected to have the following IP Chains for this feature to work.
+(DCIB adds them in DCs)
+
+  * CONTAINERS: Where references to container specific chains are added.
+  This is supposed to be referenced from the FORWARD chain.
+  * CONTAINER-REJECT: What the container specific chain jumps to in case of rejection.
+
+For local development, you can execute these commands:
+
+```bash
+sudo iptables -N CONTAINERS
+sudo iptables -A CONTAINERS -j RETURN
+
+sudo iptables -N CONTAINER-REJECT
+sudo iptables -A CONTAINER-REJECT -p tcp -j REJECT --reject-with tcp-reset
+sudo iptables -A CONTAINER-REJECT -j REJECT
+
+sudo iptables -I FORWARD 1 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+sudo iptables -I FORWARD 2 -p icmp -j ACCEPT
+sudo iptables -I FORWARD 3 -m state --state INVALID -j DROP
+sudo iptables -I FORWARD 4 -j CONTAINERS
+```
+
+If the label is not specified, there is no ingress restriction enforced.
+
+### Auto volume mount (NFS/Ceph)
+
+```bash
+docker run -v 10.112.12.13//foo:/foo:nfs,rw ubuntu
+```
+
+```bash
+docker run -v ceph-volume-foo:/foo:ceph,rw ubuntu
+```
+
+## Contributing
+
+### Development env installation using Vagrant
 
 1. Create working dir for docker-routed-plugin
 
@@ -80,7 +184,7 @@ $ cp docker-plugin/docker-build.sh .
 $ sudo bash docker-build.sh
 ```
 
-## Usage
+### Usage
 
 1. Build plugin docker image and run the driver
 
@@ -98,7 +202,7 @@ $ docker network create --internal --driver=net-routed --ipam-driver=ipam-routed
 $ docker run -ti --net=mine --ip 10.46.1.7 debian:jessie sh
 ```
 
-## Debugging with Delve
+### Debugging with Delve
 
 For info on Delve see https://blog.gopheracademy.com/advent-2015/debugging-with-delve
 and https://github.com/derekparker/delve/tree/master/Documentation/cli
@@ -138,7 +242,7 @@ $ docker network create --internal --driver=routed --subnet 10.46.0.0/16  mine
 (dlv) continue
 ```
 
-## Adding dependencies via govendor
+### Adding dependencies via govendor
 
 ```
 $ vagrant ssh
@@ -146,7 +250,7 @@ $ cd /vagrant/go/src/github.com/medallia/docker-routed-plugin/
 $ govendor fetch github.com/docker/libnetwork
 ```
 
-## Additional information
+### Additional information
 
 To contribute with the development of this plugin it is recommended that you go
 through the following documentation:
