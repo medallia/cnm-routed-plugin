@@ -27,7 +27,7 @@ docker-clean:
 	-@docker rmi $(docker images | grep "^<none>" | awk '{print $3}') > /dev/null 2>&1
 
 docker-run: docker-build
-	docker run -ti --privileged --net=host --rm -v /run/docker/plugins:/run/docker/plugins ${IMAGETAG} -log-level debug
+	docker run -ti --privileged --net=host --rm -v /run/docker/plugins:/run/docker/plugins ${IMAGETAG} --debug
 
 .DEFAULT_GOAL: build
 .PHONY: clean, docker-clean
