@@ -94,8 +94,7 @@ $ make docker-run
 
 ```
 $ vagrant ssh
-$ cd ~/repos/docker-routed-plugin
-$ docker network create --internal --driver=routed --subnet 10.46.0.0/16  mine
+$ docker network create --internal --driver=net-routed --ipam-driver=ipam-routed --subnet 10.46.0.0/16  mine
 $ docker run -ti --net=mine --ip 10.46.1.7 debian:jessie sh
 ```
 
@@ -108,7 +107,6 @@ and https://github.com/derekparker/delve/tree/master/Documentation/cli
 
 ```
 $ vagrant ssh
-$ cd ~/repos/docker-routed-plugin
 $ docker run -ti --privileged --net=host --rm -v /run/docker/plugins:/run/docker/plugins test/routed-plugin -log-level debug
 ```
 
@@ -131,7 +129,6 @@ $ sudo su
 
 ```
 $ vagrant ssh
-$ cd ~/repos/docker-routed-plugin
 $ docker network create --internal --driver=routed --subnet 10.46.0.0/16  mine
 ```
 
@@ -140,3 +137,19 @@ $ docker network create --internal --driver=routed --subnet 10.46.0.0/16  mine
 ```
 (dlv) continue
 ```
+
+## Adding dependencies via govendor
+
+```
+$ vagrant ssh
+$ cd /vagrant/go/src/github.com/medallia/docker-routed-plugin/
+$ govendor fetch github.com/docker/libnetwork
+```
+
+## Additional information
+
+To contribute with the development of this plugin it is recommended that you go
+through the following documentation:
+
+* https://github.com/docker/libnetwork/blob/master/docs/design.md
+* https://github.com/docker/libnetwork/blob/master/docs/remote.md

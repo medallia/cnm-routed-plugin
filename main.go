@@ -1,8 +1,11 @@
 package main
 
 import (
+	"sync"
+
 	log "github.com/Sirupsen/logrus"
-	netapi "github.com/docker/go-plugins-helpers/network"
+	ipamApi "github.com/docker/go-plugins-helpers/ipam"
+	netApi "github.com/docker/go-plugins-helpers/network"
 	"github.com/medallia/docker-routed-plugin/routed"
 )
 
@@ -11,14 +14,43 @@ const (
 )
 
 func main() {
+	// TODO: PARSE COMMAND LINE ARGS!
 	log.SetLevel(log.DebugLevel)
 
-	d, err := routed.NewDriver(version)
-	if err != nil {
-		panic(err)
-	}
+	messages := make(chan int)
+	var wg sync.WaitGroup
 
-	log.Debugf("Driver created %+v", d)
-	h := netapi.NewHandler(d)
-	h.ServeUnix("root", "routed")
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+
+		id, err := routed.NewIpamDriver(version)
+		if err != nil {
+			panic(err)
+		}
+
+		log.Debugf("Startig routed ipam driver: %+v", id)
+		ih := ipamApi.NewHandler(id)
+		ih.ServeUnix("root", "ipam-routed")
+
+		messages <- 1
+	}()
+
+	go func() {
+		defer wg.Done()
+
+		nd, err := routed.NewNetDriver(version)
+		if err != nil {
+			panic(err)
+		}
+
+		log.Debugf("Starting routed network driver: %+v", nd)
+		nh := netApi.NewHandler(nd)
+		nh.ServeUnix("root", "net-routed")
+
+		messages <- 2
+	}()
+
+	wg.Wait()
 }
