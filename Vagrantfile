@@ -1,6 +1,18 @@
 # -*- mode: ruby -*-
 # vi: set ft=ruby :
 
+# enable routing container traffic through the VM
+#sudo sysctl -w net.ipv4.conf.default.proxy_arp=1
+#sudo sysctl -w net.ipv4.conf.eth0.proxy_arp=1
+#sudo sysctl -w net.ipv4.ip_forward=1
+
+$script = <<SCRIPT
+sudo sh -c 'echo "net.ipv4.conf.default.proxy_arp=1" >> /etc/sysctl.conf'
+sudo sh -c 'echo "net.ipv4.conf.eth0.proxy_arp=1" >> /etc/sysctl.conf'
+sudo sh -c 'echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf'
+sudo service procps start
+SCRIPT
+
 # All Vagrant configuration is done below. The "2" in Vagrant.configure
 # configures the configuration version (we support older styles for
 # backwards compatibility). Please don't change it unless you know what
@@ -10,7 +22,7 @@ Vagrant.configure("2") do |config|
   # config vm name
   config.vm.define "docker-vm" do |p|
   end
-  
+
   config.vm.hostname = "docker-vm"
 
   # The most common configuration options are documented and commented below.
@@ -60,6 +72,9 @@ Vagrant.configure("2") do |config|
   config.vm.provider "virtualbox" do |vb|
     vb.memory = "4096"
   end
+
+  # execute init script
+  config.vm.provision "shell", inline: $script
 
   #
   # View the documentation for the provider you are using for more
