@@ -5,7 +5,7 @@ import (
 	"net"
 	"strings"
 
-	"github.com/Sirupsen/logrus"
+	log "github.com/Sirupsen/logrus"
 	"github.com/docker/libnetwork/iptables"
 )
 
@@ -83,12 +83,12 @@ func NetFilterConfigParse(ingressAllowedString string) (*netFilterConfig, error)
 }
 
 func NewNetFilter(ifaceName string, epOptions map[string]interface{}) *netFilter {
-	logrus.Debugf("New NetFilter for iface %s and options %s", ifaceName, epOptions)
+	log.Debugf("New NetFilter for iface %s and options %s", ifaceName, epOptions)
 
-	// TODO: Fix!!
+	// TODO: Fix
 	//ingressFiltering := epOptions[netlabel.IngressAllowed].(*netFilterConfig)
 	//if ingressFiltering == nil {
-	//	logrus.Info("NetFilter: No network ingress filtering specified")
+	//	log.Info("NetFilter: No network ingress filtering specified")
 	//}
 
 	//return &netFilter{ifaceName, ingressFiltering}
@@ -106,7 +106,7 @@ func (n *netFilter) applyFiltering() error {
 
 	vethChainName := vethChainPrefix + n.ifaceName
 
-	logrus.Debugf("NetFilter. Allowing ingress: %s %s for %s", n.config.allowedNets, n.config.allowedRanges, n.ifaceName)
+	log.Debugf("NetFilter. Allowing ingress: %s %s for %s", n.config.allowedNets, n.config.allowedRanges, n.ifaceName)
 
 	// Verify expected chains "CONTAINERS" and "CONTAINER-REJECT" exist
 	for _, chainName := range []string{containersChainName, containerRejectChainName} {
@@ -135,7 +135,7 @@ func (n *netFilter) applyFiltering() error {
 		return err
 	}
 
-	logrus.Info("NetFilter: Successfully applied ingress filtering")
+	log.Info("NetFilter: Successfully applied ingress filtering")
 	return nil
 }
 
@@ -144,7 +144,7 @@ func (n *netFilter) removeFiltering() error {
 		return nil
 	}
 
-	logrus.Debugf("NetFilter. Removing rules for %s", n.ifaceName)
+	log.Debugf("NetFilter. Removing rules for %s", n.ifaceName)
 
 	vethChainName := vethChainPrefix + n.ifaceName
 
@@ -173,7 +173,7 @@ func (ipRules *iptablesRules) apply() error {
 }
 
 func applyIpTablesRule(args ...string) error {
-	logrus.Debugf("NetFilter. IpTables call %s", args)
+	log.Debugf("NetFilter. IpTables call %s", args)
 	if output, err := iptables.Raw(args...); err != nil {
 		return fmt.Errorf("NetFilter. IP tables apply rule failed %s %s %v", args, output, err)
 	}
