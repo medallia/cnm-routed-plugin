@@ -214,9 +214,7 @@ and https://github.com/derekparker/delve/tree/master/Documentation/cli
   docker run -ti --privileged --net=host --rm -v /run/docker/plugins:/run/docker/plugins test/routed-plugin -log-level debug
   ```
 
-2. In another terminal, attach delve to the plugin process
-
-For breakpoint syntax see https://github.com/derekparker/delve/issues/528
+2. In another terminal, attach delve to the plugin process. For breakpoint syntax see https://github.com/derekparker/delve/issues/528
 
   ```
   vagrant ssh
