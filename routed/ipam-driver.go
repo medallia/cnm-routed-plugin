@@ -127,7 +127,7 @@ func (d *IpamDriver) RequestAddress(r *ipamApi.RequestAddressRequest) (*ipamApi.
 		log.Infof("RequestAddress: changing gateway address to %s", r.Address)
 	}
 
-	d.pool.allocatedIPs[fmt.Sprintf("%s", addr)] = true
+	d.pool.allocatedIPs[addr] = true
 
 	res := &ipamApi.RequestAddressResponse{
 		Address: addr,

@@ -47,7 +47,7 @@ docker run -ti --privileged --net=host --rm -v /run/docker/plugins:/run/docker/p
 Then you will need to register a routed network. Note that it uses the Ipam routed driver.
 
 ```
-network create --internal --driver=net-routed --ipam-driver=ipam-routed --subnet 10.46.1.0/16 --gateway 10.46.1.1 mine
+docker network create --internal --driver=net-routed --ipam-driver=ipam-routed --subnet 10.46.1.0/16 --gateway 10.46.1.1 mine
 ```
 
 Finally, you can run a container attached to the routed network you created previously.
