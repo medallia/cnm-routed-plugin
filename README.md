@@ -37,69 +37,25 @@ interface eth1
 !
 ```
 
-To launch a container using the routed mode, you need to specify it and add a label containing the list of IP addresses you want to assign to a particular container.
+To launch a container using the routed mode, you first need to have the routed
+driver running in the host.
 
-
-```bash
-docker run --it --net=routed --label io.docker.network.endpoint.ip4addresses="192.168.13.1,10.112.20.2" ubuntu
+```
+docker run -ti --privileged --net=host --rm -v /run/docker/plugins:/run/docker/plugins test/routed-plugin --debug
 ```
 
-Also an 'ip-address' option is available to supply the addresses
-```bash
-docker run --it --net=routed --ip-address="192.168.13.1,10.112.20.2" ubuntu
+Then you will need to register a routed network. Note that it uses the Ipam routed driver.
+
+```
+network create --internal --driver=net-routed --ipam-driver=ipam-routed --subnet 10.46.1.0/16 --gateway 10.46.1.1 mine
 ```
 
-## IP tables integration
+Finally, you can run a container attached to the routed network you created previously.
+You will need to specify the ip address to assign to the container endpoint using the
+--ip label.  
 
-Works with the routed driver. Allows to specify what IPs are allowed to connect
-to the container.
-
-You specify it via the container label "io.docker.network.endpoint.ingressAllowed".
-For example:
-
-```bash
-docker run -it --net=routed --ip-address=192.168.13.13 --label io.docker.network.endpoint.ingressAllowed="1.1.1.1/24,2.2.2.2" ubuntu /bin/bash
 ```
-
-The parameter accepts a comma separated list of values, which can be:
-
-  * Single IP
-  * IP Net (CIDR)
-  * IP Range (IP-IP)
-
-The host machine is expected to have the following IP Chains for this feature to work.
-(DCIB adds them in DCs)
-
-  * CONTAINERS: Where references to container specific chains are added.
-  This is supposed to be referenced from the FORWARD chain.
-  * CONTAINER-REJECT: What the container specific chain jumps to in case of rejection.
-
-For local development, you can execute these commands:
-
-```bash
-sudo iptables -N CONTAINERS
-sudo iptables -A CONTAINERS -j RETURN
-
-sudo iptables -N CONTAINER-REJECT
-sudo iptables -A CONTAINER-REJECT -p tcp -j REJECT --reject-with tcp-reset
-sudo iptables -A CONTAINER-REJECT -j REJECT
-
-sudo iptables -I FORWARD 1 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-sudo iptables -I FORWARD 2 -p icmp -j ACCEPT
-sudo iptables -I FORWARD 3 -m state --state INVALID -j DROP
-sudo iptables -I FORWARD 4 -j CONTAINERS
-```
-
-If the label is not specified, there is no ingress restriction enforced.
-
-### Auto volume mount (NFS/Ceph)
-
-```bash
-docker run -v 10.112.12.13//foo:/foo:nfs,rw ubuntu
-```
-
-```bash
-docker run -v ceph-volume-foo:/foo:ceph,rw ubuntu
+docker run -ti --net=mine --ip 10.46.1.7 debian:jessie sh
 ```
 
 ## Contributing
@@ -123,11 +79,14 @@ docker run -v ceph-volume-foo:/foo:ceph,rw ubuntu
   vagrant plugin install vagrant-vbguest
   ```
 
-3. Initialize your vagrant VM
+3. Initialize your vagrant VM. (Note that the Vagrantfile includes instructions
+to configure ip4 forwarding, proxy arp and iptables chains on VM provision.
+If this script is modified in the Vagrantfile, the VM will need to be
+re-provisioned using ```vagrant up --provision```)
 
   ```
   cd ~/repos/docker-devel
-  vagrant init ubuntu/trusty64
+  vagrant up
   vagrant ssh
   ```
 
@@ -178,7 +137,7 @@ docker run -v ceph-volume-foo:/foo:ceph,rw ubuntu
   mkdir repos
   cd repos
   ln -s /vagrant/go/src/github.com/medallia/docker-routed-plugin docker-plugin
-  curl -fsSLO https://get.docker.com/builds/Linux/x86_64/docker-1.12.0.tgz && tar --strip-components=1 -xvzf docker-1.12.0.tgz docker/docker && mv docker docker.ok && rm docker-1.12.0.tgz
+  curl -fsSLO https://get.docker.com/builds/Linux/x86_64/docker-1.12.0.tgz && tar --strip-components=1 -xvzf docker-1.12.0.tgz docker/docker && cp docker docker.ok && rm docker-1.12.0.tgz
   git clone http://github.com/docker/docker && cd docker && git checkout 8eab29edd820017901796eb60d4bea28d760f16 && cd -
   cp docker-plugin/docker-build.sh .
   sudo bash docker-build.sh
@@ -207,31 +166,38 @@ docker run -v ceph-volume-foo:/foo:ceph,rw ubuntu
 For info on Delve see https://blog.gopheracademy.com/advent-2015/debugging-with-delve
 and https://github.com/derekparker/delve/tree/master/Documentation/cli
 
+Note: You might need to comment lines 166-168 (if [ -z "$DOCKER_DEBUG" ]; then..)
+in the hach/make.sh file at docker repo and recompile and reinstall docker using
+ the docker-build.sh script.
+If the DOCKER_DEBUG flag is used in hack/make.sh, docker will be compiled with
+`go build -ldflags -w` (See hack/make/.binary) and this prevents the
+.debug_frame section from appearing in the docker demon binary (See https://github.com/derekparker/delve/issues/467).
+
 1. Run the plugin in a terminal
 
   ```
   vagrant ssh
-  docker run -ti --privileged --net=host --rm -v /run/docker/plugins:/run/docker/plugins test/routed-plugin -log-level debug
+  cd ~/repos/docker-routed-plugin
+  make docker-run
   ```
 
 2. In another terminal, attach delve to the plugin process. For breakpoint syntax see https://github.com/derekparker/delve/issues/528
 
   ```
   vagrant ssh
-  ps afx | grep docker
   sudo su
   export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/vagrant/go/bin:/usr/local/go/bin:/vagrant/go/bin:/usr/local/go/bin
-  dlv attach <pid>
+  dlv attach $(ps -A -o pid,cmd|grep " ./routed-plugin --debug" | grep -v grep |head -n 1 | awk '{print $1}')
   (dlv) break /routed.*CreateNetwork/
   (dlv) break /routed.*DeleteNetwork/
-  (dlv) break /routed.*NewDriver/
+  (dlv) break /routed.*NewNetDriver/
   ```
 
 3. From yet another terminal, create a routed network in a docker container
 
   ```
   vagrant ssh
-  docker network create --internal --driver=routed --subnet 10.46.0.0/16  mine
+  docker network create --internal --driver=net-routed --ipam-driver=ipam-routed --subnet 10.46.0.0/16  mine
   ```
 
 4. Now you can debug in the delve terminal

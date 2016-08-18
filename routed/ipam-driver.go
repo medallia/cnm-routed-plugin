@@ -2,10 +2,8 @@ package routed
 
 import (
 	"fmt"
-	"math/rand"
 	"net"
 	"sync"
-	"time"
 
 	log "github.com/Sirupsen/logrus"
 	ipamApi "github.com/docker/go-plugins-helpers/ipam"
@@ -32,19 +30,19 @@ type IpamDriver struct {
 }
 
 func NewIpamDriver(version string) (*IpamDriver, error) {
-	log.Debugf("Initializing ipam routed driver version %+v", version)
+	log.Debugf("NewIpamDriver: Initializing ipam routed driver version %+v", version)
 
 	net, _ := netlink.ParseIPNet(network)
 	gw, _ := netlink.ParseIPNet(gateway)
 
 	pool := &routedPool{
-		id:           "myPool",
+		id:           "routed",
 		subnet:       net,
 		allocatedIPs: make(map[string]bool),
 		gateway:      gw,
 	}
 
-	pool.allocatedIPs[fmt.Sprintf("%s", gateway)] = true
+	pool.allocatedIPs[gateway] = true
 
 	d := &IpamDriver{
 		version: version,
@@ -58,7 +56,7 @@ func (driver *IpamDriver) GetCapabilities() (*ipamApi.CapabilitiesResponse, erro
 	res := &ipamApi.CapabilitiesResponse{
 		RequiresMACAddress: false,
 	}
-	log.Debugf("Get capabilities: responded with %+v", res)
+	log.Debugf("GetCapabilities: responded with %+v", res)
 	return res, nil
 }
 
@@ -67,16 +65,22 @@ func (driver *IpamDriver) GetDefaultAddressSpaces() (*ipamApi.AddressSpacesRespo
 		LocalDefaultAddressSpace:  "Testlocal",
 		GlobalDefaultAddressSpace: "TestRemote",
 	}
-	log.Infof("Get default address spaces: responded with %+v", res)
+	log.Infof("GetDefaultAddressSpaces: responded with %+v", res)
 	return res, nil
 }
 
 func (d *IpamDriver) RequestPool(r *ipamApi.RequestPoolRequest) (*ipamApi.RequestPoolResponse, error) {
-	log.Debugf("Pool Request request: %+v", r)
+	log.Debugf("RequestPool: %+v", r)
 
-	cidr := fmt.Sprintf("%s", d.pool.subnet)
+	ip, _ := netlink.ParseIPNet(r.Pool)
+
+	if ip != nil {
+		d.pool.subnet = ip
+	}
+
+	cidr := d.pool.subnet.String()
 	id := d.pool.id
-	gateway := fmt.Sprintf("%s", d.pool.gateway)
+	gateway := d.pool.gateway.String()
 
 	res := &ipamApi.RequestPoolResponse{
 		PoolID: id,
@@ -84,59 +88,58 @@ func (d *IpamDriver) RequestPool(r *ipamApi.RequestPoolRequest) (*ipamApi.Reques
 		Data:   map[string]string{"com.docker.network.gateway": gateway},
 	}
 
-	log.Infof("Pool Request: responded with %+v", res)
+	log.Infof("RequestPool: responded with %+v", res)
+	log.Infof("RequestPool: subnet is %v, gateway is %v", d.pool.subnet.String(),
+		d.pool.gateway.String())
 	return res, nil
 }
 
 func (d *IpamDriver) ReleasePool(r *ipamApi.ReleasePoolRequest) error {
-	log.Debugf("Pool Release request: %+v", r)
+	log.Debugf("ReleasePool: request %+v", r)
 
-	log.Infof("Pool release %s ", r.PoolID)
+	log.Infof("ReleasePool: PoolID %s ", r.PoolID)
 	return nil
 }
 
 func (d *IpamDriver) RequestAddress(r *ipamApi.RequestAddressRequest) (*ipamApi.RequestAddressResponse, error) {
-	log.Debugf("Address Request request: %+v", r)
+	log.Debugf("RequestAddress: request %+v", r)
 
 	d.pool.m.Lock()
 	defer d.pool.m.Unlock()
 
-	if len(r.Address) > 0 {
-		addr := fmt.Sprintf("%s/32", r.Address)
-		if _, ok := d.pool.allocatedIPs[addr]; ok {
-			return nil, fmt.Errorf("%s already allocated", addr)
-		}
+	addr := fmt.Sprintf("%s/32", r.Address)
 
-		res := &ipamApi.RequestAddressResponse{
-			Address: addr,
-		}
-		log.Infof("Address request response: %+v", res)
-		return res, nil
+	ip, _ := netlink.ParseIPNet(addr)
+
+	if ip == nil {
+		return nil, fmt.Errorf("RequestAddress: invalid IP address %v\n", r.Address)
 	}
-again:
-	// just generate a random address
-	rand.Seed(time.Now().UnixNano())
-	ip := d.pool.subnet.IP.To4()
-	ip[3] = byte(rand.Intn(254))
-	netIP := fmt.Sprintf("%s/32", ip)
-	log.Infof("ip:%s", netIP)
 
-	_, ok := d.pool.allocatedIPs[netIP]
-
-	if ok {
-		goto again
+	if exists := d.pool.allocatedIPs[addr]; exists {
+		// ignore ip if it was already allocated as gateway
+		if !(r.Options["RequestAddressType"] == "com.docker.network.gateway" && ip.String() == d.pool.gateway.String()) {
+			return nil, fmt.Errorf("RequestAddress: address %s already allocated", addr)
+		}
 	}
-	d.pool.allocatedIPs[netIP] = true
+
+	if r.Options["RequestAddressType"] == "com.docker.network.gateway" {
+		d.pool.gateway = ip
+		log.Infof("RequestAddress: changing gateway address to %s", r.Address)
+	}
+
+	d.pool.allocatedIPs[fmt.Sprintf("%s", addr)] = true
+
 	res := &ipamApi.RequestAddressResponse{
-		Address: fmt.Sprintf("%s", netIP),
+		Address: addr,
 	}
 
-	log.Infof("Address request response: %+v", res)
+	log.Infof("RequestAddress: response %+v", res)
+
 	return res, nil
 }
 
 func (d *IpamDriver) ReleaseAddress(r *ipamApi.ReleaseAddressRequest) error {
-	log.Debugf("Address Release request: %+v", r)
+	log.Debugf("ReleaseAddress: request %+v", r)
 
 	d.pool.m.Lock()
 	defer d.pool.m.Unlock()
@@ -145,6 +148,6 @@ func (d *IpamDriver) ReleaseAddress(r *ipamApi.ReleaseAddressRequest) error {
 
 	delete(d.pool.allocatedIPs, ip)
 
-	log.Infof("Address release %s from %s", r.Address, r.PoolID)
+	log.Infof("ReleaseAddress: %s from %s", r.Address, r.PoolID)
 	return nil
 }

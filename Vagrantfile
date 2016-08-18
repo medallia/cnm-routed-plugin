@@ -1,16 +1,30 @@
 # -*- mode: ruby -*-
 # vi: set ft=ruby :
 
-# enable routing container traffic through the VM
+# Enable routing container traffic through the VM, equivalent to:
 #sudo sysctl -w net.ipv4.conf.default.proxy_arp=1
 #sudo sysctl -w net.ipv4.conf.eth0.proxy_arp=1
 #sudo sysctl -w net.ipv4.ip_forward=1
-
+# Create iptables chains and make them persistent
 $script = <<SCRIPT
 sudo sh -c 'echo "net.ipv4.conf.default.proxy_arp=1" >> /etc/sysctl.conf'
 sudo sh -c 'echo "net.ipv4.conf.eth0.proxy_arp=1" >> /etc/sysctl.conf'
 sudo sh -c 'echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf'
 sudo service procps start
+
+sudo iptables -N CONTAINERS
+sudo iptables -A CONTAINERS -j RETURN
+sudo iptables -N CONTAINER-REJECT
+sudo iptables -A CONTAINER-REJECT -p tcp -j REJECT --reject-with tcp-reset
+sudo iptables -A CONTAINER-REJECT -j REJECT
+sudo iptables -I FORWARD 1 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+sudo iptables -I FORWARD 2 -p icmp -j ACCEPT
+sudo iptables -I FORWARD 3 -m state --state INVALID -j DROP
+sudo iptables -I FORWARD 4 -j CONTAINERS
+
+sudo /bin/bash -c 'iptables-save > /etc/iptables.up.rules.routed'
+sudo /bin/bash -c '( echo  "#!/bin/sh" ; echo "/sbin/iptables-restore < /etc/iptables.up.rules.routed" ) > /etc/network/if-pre-up.d/iptables.routed'
+sudo chmod +x /etc/network/if-pre-up.d/iptables.routed
 SCRIPT
 
 # All Vagrant configuration is done below. The "2" in Vagrant.configure

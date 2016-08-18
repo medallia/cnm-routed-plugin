@@ -14,7 +14,7 @@ LDFLAGS=-ldflags "-X main.Build=${BUILD} -X main.BuildTime=${BUILD_TIME}"
 IMAGETAG := test/routed-plugin
 
 build: $(SOURCES)
-	    go build ${LDFLAGS} -o ${BINARY} main.go
+	go build ${LDFLAGS} -o ${BINARY} main.go
 
 docker-build: build
 	docker build -t $(IMAGETAG) .

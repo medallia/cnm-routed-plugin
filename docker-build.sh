@@ -6,8 +6,7 @@ cp docker.ok /usr/bin/docker
 start docker | true
 
 cd $PROJ
-#make binary
-DOCKER_DEBUG=1 make binary
+make binary
 cd -
 
 stop docker | true

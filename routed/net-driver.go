@@ -40,25 +40,24 @@ type NetDriver struct {
 	netApi.Driver
 	version string
 	mtu     int
-	// TODO: should have a list of networks instead of only one network?
 	network *routedNetwork
 }
 
 func NewNetDriver(version string) (*NetDriver, error) {
-	log.Debugf("Initializing routed driver version %+v", version)
+	log.Debugf("NewNetDriver: Initializing routed driver version %+v", version)
 
 	links, err := netlink.LinkList()
 	if err != nil {
-		log.Errorf("Can't get list of net devices: %s", err)
+		log.Errorf("NewNetDriver: Can't get list of net devices: %s", err)
 		return nil, err
 	}
 	// clean up old interfaces
 	for _, lnk := range links {
 		if strings.HasPrefix(lnk.Attrs().Name, vethPrefix) {
 			if err := netlink.LinkDel(lnk); err != nil {
-				log.Errorf("veth couldn't be deleted: %s", lnk.Attrs().Name)
+				log.Errorf("NewNetDriver: veth couldn't be deleted: %s", lnk.Attrs().Name)
 			} else {
-				log.Infof("veth cleaned up: %s", lnk.Attrs().Name)
+				log.Infof("NewNetDriver: veth cleaned up: %s", lnk.Attrs().Name)
 			}
 		}
 	}
@@ -73,26 +72,26 @@ func NewNetDriver(version string) (*NetDriver, error) {
 
 func (d *NetDriver) GetCapabilities() (*netApi.CapabilitiesResponse, error) {
 	res := &netApi.CapabilitiesResponse{Scope: netApi.LocalScope}
-	log.Debugf("Get capabilities: responded with %+v", res)
+	log.Debugf("GetCapabilities: responded with %+v", res)
 	return res, nil
 }
 
 func (d *NetDriver) CreateNetwork(r *netApi.CreateNetworkRequest) error {
-	log.Debugf("Create network request: %+v", r)
+	log.Debugf("CreateNetwork: request %+v", r)
 	d.network = &routedNetwork{id: r.NetworkID, endpoints: make(map[string]*routedEndpoint)}
-	log.Infof("Create network %s", r.NetworkID)
+	log.Infof("CreateNetwork: NetworkID %s", r.NetworkID)
 	return nil
 }
 
 func (d *NetDriver) DeleteNetwork(r *netApi.DeleteNetworkRequest) error {
-	log.Debugf("Delete network request: %+v", r)
+	log.Debugf("DeleteNetwork: request %+v", r)
 	d.network = nil
-	log.Infof("Destroying network %s", r.NetworkID)
+	log.Infof("DeleteNetwork: NetworkID %s", r.NetworkID)
 	return nil
 }
 
 func (d *NetDriver) CreateEndpoint(r *netApi.CreateEndpointRequest) (*netApi.CreateEndpointResponse, error) {
-	log.Debugf("Create endpoint request: %+v", r)
+	log.Debugf("CreateEndpoint: request %+v", r)
 
 	eid := r.EndpointID
 	ifInfo := r.Interface
@@ -101,19 +100,19 @@ func (d *NetDriver) CreateEndpoint(r *netApi.CreateEndpointRequest) (*netApi.Cre
 	network.m.Lock()
 	defer network.m.Unlock()
 
-	log.Debugf("Requested Interface %+v", ifInfo)
+	log.Debugf("CreateEndpoint: Requested Interface %+v", ifInfo)
 	addr, _ := netlink.ParseIPNet(ifInfo.Address)
 	ep := &routedEndpoint{
 		ipv4Address: addr,
 	}
 	d.network.endpoints[eid] = ep
-	log.Infof("Creating endpoint %s %+v", eid, nil)
+	log.Infof("CreateEndpoint: created endpoint %s", eid)
 
 	return nil, nil
 }
 
 func (d *NetDriver) DeleteEndpoint(r *netApi.DeleteEndpointRequest) error {
-	log.Debugf("Delete endpoint request: %+v", r)
+	log.Debugf("DeleteEndpoint: request %+v", r)
 
 	eid := r.EndpointID
 	network := d.network
@@ -123,21 +122,21 @@ func (d *NetDriver) DeleteEndpoint(r *netApi.DeleteEndpointRequest) error {
 	defer network.m.Unlock()
 
 	delete(network.endpoints, eid)
-	log.Infof("Deleting endpoint %s", eid)
+	log.Infof("DeleteEndpoint: deleted endpoint %s", eid)
 
 	// Try removal of link. Discard error: link pair might have
 	// already been deleted by sandbox delete.
 	link, err := netlink.LinkByName(ep.hostInterfaceName)
 	if err == nil {
-		log.Debugf("Deleting host interface %s", ep.hostInterfaceName)
+		log.Debugf("DeleteEndpoint: Deleting host interface %s", ep.hostInterfaceName)
 		netlink.LinkDel(link)
 	} else {
-		log.Debugf("Can't find host interface: $s, %v ", ep.hostInterfaceName, err)
+		log.Debugf("DeleteEndpoint: Can't find host interface: %s, %v ", ep.hostInterfaceName, err)
 	}
 
 	if ep.netFilter != nil {
 		if err := ep.netFilter.removeFiltering(); err != nil {
-			log.Warnf("Couldn't remove net filter rules for iface %s,%v", ep.hostInterfaceName, err)
+			log.Warnf("DeleteEndpoint: Couldn't remove net filter rules for iface %s, %v", ep.hostInterfaceName, err)
 		}
 	}
 
@@ -145,13 +144,13 @@ func (d *NetDriver) DeleteEndpoint(r *netApi.DeleteEndpointRequest) error {
 }
 
 func (d *NetDriver) EndpointInfo(r *netApi.InfoRequest) (*netApi.InfoResponse, error) {
-	log.Debugf("Endpoint info %s:%s", r.NetworkID, r.EndpointID)
+	log.Debugf("EndpointInfo: reuqest %+v:", r)
 	res := &netApi.InfoResponse{Value: map[string]string{}}
 	return res, nil
 }
 
 func (d *NetDriver) Join(r *netApi.JoinRequest) (*netApi.JoinResponse, error) {
-	log.Debugf("Join endpoint %s:%s to r.SandboxKey", r.NetworkID, r.EndpointID)
+	log.Debugf("Join: request %+v", r)
 
 	eid := r.EndpointID
 	network := d.network
@@ -183,31 +182,31 @@ func (d *NetDriver) Join(r *netApi.JoinRequest) (*netApi.JoinResponse, error) {
 	}
 
 	// create veth
-	log.Debugf("Adding link %+v", veth)
+	log.Debugf("Join: Adding link %+v", veth)
 	if err := netlink.LinkAdd(veth); err != nil {
-		log.Errorf("Unable to add link %+v:%+v", veth, err)
+		log.Errorf("Join: Unable to add link %+v:%+v", veth, err)
 		return nil, err
 	}
 
-	log.Debugf("Setting mtu %+v on %+v", d.mtu, veth)
+	log.Debugf("Join: Setting mtu %+v on %+v", d.mtu, veth)
 	if err := netlink.LinkSetMTU(veth, d.mtu); err != nil {
-		log.Errorf("Error setting the MTU %s", err)
+		log.Errorf("Join: Error setting the MTU %s", err)
 	}
 
-	log.Debugf("Bringing link up %+v", veth)
+	log.Debugf("Join: Bringing link up %+v", veth)
 	if err := netlink.LinkSetUp(veth); err != nil {
-		log.Errorf("Unable to bring up %+v: %+v", veth, err)
+		log.Errorf("Join: Unable to bring up %+v: %+v", veth, err)
 		return nil, err
 	}
 
 	hostIface, _ := netlink.LinkByName(hostIfaceName)
 	if err != nil {
-		log.Errorf("Can't find Host Interface: %s", hostIfaceName)
+		log.Errorf("Join: Can't find host interface %s", hostIfaceName)
 		return nil, err
 	}
 	defer func() {
 		if err != nil {
-			log.Infof("Deleting Host veth %s", hostIfaceName)
+			log.Infof("Join: Deleting host interface %s", hostIfaceName)
 			netlink.LinkDel(hostIface)
 		}
 	}()
@@ -218,20 +217,20 @@ func (d *NetDriver) Join(r *netApi.JoinRequest) (*netApi.JoinResponse, error) {
 	}
 	defer func() {
 		if err != nil {
-			log.Infof("Deleting Container veth %s", containerIfaceName)
+			log.Infof("Join: Deleting container interface %s", containerIfaceName)
 			netlink.LinkDel(containerIface)
 		}
 	}()
 
 	// Down the interface before configuring mac address.
 	if err := netlink.LinkSetDown(containerIface); err != nil {
-		return nil, fmt.Errorf("could not set link down for container interface %s: %v", containerIfaceName, err)
+		return nil, fmt.Errorf("Join: could not set link down for container interface %s, %v", containerIfaceName, err)
 	}
 
 	var imac net.HardwareAddr
 	if opt, ok := options[netlabel.MacAddress]; ok {
 		if mac, ok := opt.(net.HardwareAddr); ok {
-			log.Debugf("Using Mac Address: %s", mac)
+			log.Debugf("Join: Using Mac Address %s", mac)
 			imac = mac
 		}
 	}
@@ -240,12 +239,12 @@ func (d *NetDriver) Join(r *netApi.JoinRequest) (*netApi.JoinResponse, error) {
 
 	err = netlink.LinkSetHardwareAddr(containerIface, mac)
 	if err != nil {
-		return nil, fmt.Errorf("could not set mac address %s for container interface %s: %v", mac, containerIfaceName, err)
+		return nil, fmt.Errorf("Join: could not set mac address %s for container interface %s, %v", mac, containerIfaceName, err)
 	}
 
 	// Up the host interface after finishing all netlink configuration
 	if err := netlink.LinkSetUp(hostIface); err != nil {
-		return nil, fmt.Errorf("could not set link up for host interface %s: %v", hostIfaceName, err)
+		return nil, fmt.Errorf("Join: could not set link up for host interface %s, %v", hostIfaceName, err)
 	}
 
 	// Configure routes
@@ -261,7 +260,7 @@ func (d *NetDriver) Join(r *netApi.JoinRequest) (*netApi.JoinResponse, error) {
 	// Configure firewall rules
 	ep.netFilter = NewNetFilter(hostIfaceName, options)
 	if err := ep.netFilter.applyFiltering(); err != nil {
-		return nil, fmt.Errorf("could not add net filtering %v", err)
+		return nil, fmt.Errorf("Join: could not add net filtering %v", err)
 	}
 
 	respIface := netApi.InterfaceName{
@@ -281,13 +280,13 @@ func (d *NetDriver) Join(r *netApi.JoinRequest) (*netApi.JoinResponse, error) {
 		StaticRoutes:          []*netApi.StaticRoute{sandboxRoute},
 	}
 
-	log.Infof("Join Request Response %+v", res)
+	log.Infof("Join: response %+v", res)
 
 	return res, nil
 }
 
 func (d *NetDriver) Leave(r *netApi.LeaveRequest) error {
-	log.Debugf("Leave %s:%s", r.NetworkID, r.EndpointID)
+	log.Debugf("Leave: request %+v", r)
 	return nil
 }
 
@@ -295,7 +294,7 @@ func electMacAddress(mac net.HardwareAddr, ip net.IP) net.HardwareAddr {
 	if mac != nil {
 		return mac
 	}
-	log.Debugf("Generating MacAddress")
+	log.Debugf("electMacAddress: Generating MacAddress")
 	return generateMacAddr(ip)
 }
 
@@ -315,9 +314,9 @@ func routeAdd(ip *net.IPNet, iface netlink.Link) error {
 		LinkIndex: iface.Attrs().Index,
 		Dst:       ip,
 	}
-	log.Debugf("Adding route %+v", route)
+	log.Debugf("routeAdd: Adding route %+v", route)
 	if err := netlink.RouteAdd(&route); err != nil {
-		log.Errorf("Unable to add route %+v: %+v", route, err)
+		log.Errorf("routeAdd: Unable to add route %+v: %+v", route, err)
 	}
 	return nil
 }

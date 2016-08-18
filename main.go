@@ -17,18 +17,18 @@ const (
 
 func main() {
 
-	var debug = cli.BoolFlag{
+	debug := cli.BoolFlag{
 		Name:  "debug, d",
 		Usage: "set debugging",
 	}
 
-	var ipamSocket = cli.StringFlag{
+	ipamSocket := cli.StringFlag{
 		Name:  "ipamsock, s",
 		Value: "ipam-routed",
 		Usage: "set ipam plugin socket name",
 	}
 
-	var netSocket = cli.StringFlag{
+	netSocket := cli.StringFlag{
 		Name:  "netsock, S",
 		Value: "net-routed",
 		Usage: "set network plugin socket name",
@@ -46,11 +46,11 @@ func main() {
 		netSocket,
 	}
 
-	app.Action = DriverRun
+	app.Action = driverRun
 	app.Run(os.Args)
 }
 
-func DriverRun(c *cli.Context) {
+func driverRun(c *cli.Context) {
 
 	if c.Bool("debug") {
 		log.SetLevel(log.DebugLevel)
