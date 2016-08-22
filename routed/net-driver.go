@@ -10,16 +10,16 @@ import (
 	netApi "github.com/docker/go-plugins-helpers/network"
 	"github.com/docker/libnetwork/netlabel"
 	"github.com/docker/libnetwork/netutils"
+	"github.com/docker/libnetwork/types"
 	"github.com/vishvananda/netlink"
 )
 
 const (
-	ifaceID                 = 1
-	defaultMtu              = 1500
-	sandboxLinkLocalAddress = "169.254.0.2/30"
-	defaultGw               = "169.254.0.1/30"
-	vethPrefix              = "vethr"
-	ethPrefix               = "eth"
+	ifaceID        = 1
+	defaultMtu     = 1500
+	vethPrefix     = "vethr"
+	ethPrefix      = "eth"
+	defaultGwIface = "eth0"
 )
 
 type routedNetwork struct {
@@ -39,12 +39,18 @@ type routedEndpoint struct {
 type NetDriver struct {
 	netApi.Driver
 	version string
+	gateway string
 	mtu     int
 	network *routedNetwork
 }
 
 func NewNetDriver(version string) (*NetDriver, error) {
 	log.Debugf("NewNetDriver: Initializing routed driver version %+v", version)
+
+	d := &NetDriver{
+		version: version,
+		mtu:     defaultMtu,
+	}
 
 	links, err := netlink.LinkList()
 	if err != nil {
@@ -59,12 +65,16 @@ func NewNetDriver(version string) (*NetDriver, error) {
 			} else {
 				log.Infof("NewNetDriver: veth cleaned up: %s", lnk.Attrs().Name)
 			}
-		}
-	}
+		} else if lnk.Attrs().Name == defaultGwIface {
 
-	d := &NetDriver{
-		version: version,
-		mtu:     defaultMtu,
+			addrs, err := netlink.AddrList(lnk, netlink.FAMILY_V4)
+			if err != nil {
+				log.Errorf("NewNetDriver: Can't get list of ipv4 addresses: %s", err)
+				return nil, err
+			}
+
+			d.gateway = addrs[0].IP.String()
+		}
 	}
 
 	return d, nil
@@ -268,16 +278,22 @@ func (d *NetDriver) Join(r *netApi.JoinRequest) (*netApi.JoinResponse, error) {
 		DstPrefix: ethPrefix,
 	}
 
-	sandboxRoute := &netApi.StaticRoute{
-		Destination: "0.0.0.0/0",
-		RouteType:   1, // CONNECTED
+	gwRoute := &netApi.StaticRoute{
+		Destination: fmt.Sprintf("%s/32", d.gateway),
+		RouteType:   types.CONNECTED,
 		NextHop:     "",
+	}
+
+	defaultRoute := &netApi.StaticRoute{
+		Destination: "0.0.0.0/0",
+		RouteType:   types.NEXTHOP,
+		NextHop:     d.gateway,
 	}
 
 	res := &netApi.JoinResponse{
 		InterfaceName:         respIface,
 		DisableGatewayService: true,
-		StaticRoutes:          []*netApi.StaticRoute{sandboxRoute},
+		StaticRoutes:          []*netApi.StaticRoute{gwRoute, defaultRoute},
 	}
 
 	log.Infof("Join: response %+v", res)
