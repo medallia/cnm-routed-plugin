@@ -44,13 +44,8 @@ type NetDriver struct {
 	network *routedNetwork
 }
 
-func NewNetDriver(version string) (*NetDriver, error) {
+func NewNetDriver(version string, gateway string) (*NetDriver, error) {
 	log.Debugf("NewNetDriver: Initializing routed driver version %+v", version)
-
-	d := &NetDriver{
-		version: version,
-		mtu:     defaultMtu,
-	}
 
 	links, err := netlink.LinkList()
 	if err != nil {
@@ -65,16 +60,13 @@ func NewNetDriver(version string) (*NetDriver, error) {
 			} else {
 				log.Infof("NewNetDriver: veth cleaned up: %s", lnk.Attrs().Name)
 			}
-		} else if lnk.Attrs().Name == defaultGwIface {
-
-			addrs, err := netlink.AddrList(lnk, netlink.FAMILY_V4)
-			if err != nil {
-				log.Errorf("NewNetDriver: Can't get list of ipv4 addresses: %s", err)
-				return nil, err
-			}
-
-			d.gateway = addrs[0].IP.String()
 		}
+	}
+
+	d := &NetDriver{
+		version: version,
+		mtu:     defaultMtu,
+		gateway: gateway,
 	}
 
 	return d, nil

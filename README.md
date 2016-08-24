@@ -38,16 +38,17 @@ interface eth1
 ```
 
 To launch a container using the routed mode, you first need to have the routed
-driver running in the host.
+driver running in the host. The <host-ip> argument should be the IP address that
+corresponds to the interface in the host that you wish to use as default route.
 
 ```
-docker run -ti --privileged --net=host --rm -v /run/docker/plugins:/run/docker/plugins test/routed-plugin --debug
+docker run -ti --privileged --net=host --rm -v /run/docker/plugins:/run/docker/plugins test/routed-plugin --gateway <host-ip> --debug
 ```
 
 Then you will need to register a routed network. Note that it uses the Ipam routed driver.
 
 ```
-docker network create --internal --driver=net-routed --ipam-driver=ipam-routed --subnet 10.46.1.0/16 --gateway 10.46.1.1 mine
+docker network create --internal --driver=net-routed --ipam-driver=ipam-routed --subnet 10.46.1.0/16 mine
 ```
 
 Finally, you can run a container attached to the routed network you created previously.
@@ -55,7 +56,7 @@ You will need to specify the ip address to assign to the container endpoint usin
 --ip label.  
 
 ```
-docker run -ti --net=mine --ip 10.46.1.7 debian:jessie sh
+docker run -ti --net=mine --ip 10.46.1.7 alpine sh
 ```
 
 ## Contributing
@@ -80,7 +81,7 @@ docker run -ti --net=mine --ip 10.46.1.7 debian:jessie sh
   ```
 
 3. Initialize your vagrant VM. (Note that the Vagrantfile includes instructions
-to configure ip4 forwarding, proxy arp and iptables chains on VM provision.
+to configure ip4 forwarding and iptables chains on VM provision.
 If this script is modified in the Vagrantfile, the VM will need to be
 re-provisioned using ```vagrant up --provision```)
 
@@ -158,7 +159,7 @@ re-provisioned using ```vagrant up --provision```)
   ```
   vagrant ssh
   docker network create --internal --driver=net-routed --ipam-driver=ipam-routed --subnet 10.46.0.0/16  mine
-  docker run -ti --net=mine --ip 10.46.1.7 debian:jessie sh
+  docker run -ti --net=mine --ip 10.46.1.7 alpine sh
   ```
 
 ### Debugging with Delve
