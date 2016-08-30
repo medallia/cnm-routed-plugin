@@ -7,12 +7,12 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 	ipamApi "github.com/docker/go-plugins-helpers/ipam"
+	"github.com/docker/libnetwork/netlabel"
 	"github.com/vishvananda/netlink"
 )
 
 const (
 	network = "10.46.0.0/16"
-	gateway = "10.46.0.1/32"
 )
 
 type routedPool struct {
@@ -29,11 +29,11 @@ type IpamDriver struct {
 	pool    *routedPool
 }
 
-func NewIpamDriver(version string) (*IpamDriver, error) {
+func NewIpamDriver(version string, gateway string) (*IpamDriver, error) {
 	log.Debugf("NewIpamDriver: Initializing ipam routed driver version %+v", version)
 
 	net, _ := netlink.ParseIPNet(network)
-	gw, _ := netlink.ParseIPNet(gateway)
+	gw, _ := netlink.ParseIPNet(fmt.Sprintf("%s/32", gateway))
 
 	pool := &routedPool{
 		id:           "routed",
@@ -85,7 +85,7 @@ func (d *IpamDriver) RequestPool(r *ipamApi.RequestPoolRequest) (*ipamApi.Reques
 	res := &ipamApi.RequestPoolResponse{
 		PoolID: id,
 		Pool:   cidr,
-		Data:   map[string]string{"com.docker.network.gateway": gateway},
+		Data:   map[string]string{netlabel.Gateway: gateway},
 	}
 
 	log.Infof("RequestPool: responded with %+v", res)
@@ -104,6 +104,10 @@ func (d *IpamDriver) ReleasePool(r *ipamApi.ReleasePoolRequest) error {
 func (d *IpamDriver) RequestAddress(r *ipamApi.RequestAddressRequest) (*ipamApi.RequestAddressResponse, error) {
 	log.Debugf("RequestAddress: request %+v", r)
 
+	if r.Options["RequestAddressType"] == netlabel.Gateway {
+		return nil, fmt.Errorf("RequestAddress: can't change gateway")
+	}
+
 	d.pool.m.Lock()
 	defer d.pool.m.Unlock()
 
@@ -116,15 +120,7 @@ func (d *IpamDriver) RequestAddress(r *ipamApi.RequestAddressRequest) (*ipamApi.
 	}
 
 	if exists := d.pool.allocatedIPs[addr]; exists {
-		// ignore ip if it was already allocated as gateway
-		if !(r.Options["RequestAddressType"] == "com.docker.network.gateway" && ip.String() == d.pool.gateway.String()) {
-			return nil, fmt.Errorf("RequestAddress: address %s already allocated", addr)
-		}
-	}
-
-	if r.Options["RequestAddressType"] == "com.docker.network.gateway" {
-		d.pool.gateway = ip
-		log.Infof("RequestAddress: changing gateway address to %s", r.Address)
+		return nil, fmt.Errorf("RequestAddress: address %s already allocated", addr)
 	}
 
 	d.pool.allocatedIPs[addr] = true

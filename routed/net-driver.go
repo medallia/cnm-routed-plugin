@@ -10,16 +10,15 @@ import (
 	netApi "github.com/docker/go-plugins-helpers/network"
 	"github.com/docker/libnetwork/netlabel"
 	"github.com/docker/libnetwork/netutils"
+	"github.com/docker/libnetwork/types"
 	"github.com/vishvananda/netlink"
 )
 
 const (
-	ifaceID                 = 1
-	defaultMtu              = 1500
-	sandboxLinkLocalAddress = "169.254.0.2/30"
-	defaultGw               = "169.254.0.1/30"
-	vethPrefix              = "vethr"
-	ethPrefix               = "eth"
+	ifaceID        = 1
+	vethPrefix     = "vethr"
+	ethPrefix      = "eth"
+	defaultGwIface = "eth0"
 )
 
 type routedNetwork struct {
@@ -39,11 +38,12 @@ type routedEndpoint struct {
 type NetDriver struct {
 	netApi.Driver
 	version string
+	gateway string
 	mtu     int
 	network *routedNetwork
 }
 
-func NewNetDriver(version string) (*NetDriver, error) {
+func NewNetDriver(version string, gateway string, mtu int) (*NetDriver, error) {
 	log.Debugf("NewNetDriver: Initializing routed driver version %+v", version)
 
 	links, err := netlink.LinkList()
@@ -64,7 +64,8 @@ func NewNetDriver(version string) (*NetDriver, error) {
 
 	d := &NetDriver{
 		version: version,
-		mtu:     defaultMtu,
+		mtu:     mtu,
+		gateway: gateway,
 	}
 
 	return d, nil
@@ -188,17 +189,6 @@ func (d *NetDriver) Join(r *netApi.JoinRequest) (*netApi.JoinResponse, error) {
 		return nil, err
 	}
 
-	log.Debugf("Join: Setting mtu %+v on %+v", d.mtu, veth)
-	if err := netlink.LinkSetMTU(veth, d.mtu); err != nil {
-		log.Errorf("Join: Error setting the MTU %s", err)
-	}
-
-	log.Debugf("Join: Bringing link up %+v", veth)
-	if err := netlink.LinkSetUp(veth); err != nil {
-		log.Errorf("Join: Unable to bring up %+v: %+v", veth, err)
-		return nil, err
-	}
-
 	hostIface, _ := netlink.LinkByName(hostIfaceName)
 	if err != nil {
 		log.Errorf("Join: Can't find host interface %s", hostIfaceName)
@@ -222,9 +212,24 @@ func (d *NetDriver) Join(r *netApi.JoinRequest) (*netApi.JoinResponse, error) {
 		}
 	}()
 
+	if d.mtu != 0 {
+		log.Debugf("Join: Setting mtu %+v on %+v", d.mtu, veth)
+
+		if err := netlink.LinkSetMTU(hostIface, d.mtu); err != nil {
+			log.Errorf("Join: Error setting the MTU %s", err)
+			return nil, err
+		}
+
+		if err := netlink.LinkSetMTU(containerIface, d.mtu); err != nil {
+			log.Errorf("Join: Error setting the MTU %s", err)
+			return nil, err
+		}
+	}
+
 	// Down the interface before configuring mac address.
 	if err := netlink.LinkSetDown(containerIface); err != nil {
-		return nil, fmt.Errorf("Join: could not set link down for container interface %s, %v", containerIfaceName, err)
+		log.Errorf("Join: could not set link down for container interface %s, %v", containerIfaceName, err)
+		return nil, err
 	}
 
 	var imac net.HardwareAddr
@@ -239,12 +244,20 @@ func (d *NetDriver) Join(r *netApi.JoinRequest) (*netApi.JoinResponse, error) {
 
 	err = netlink.LinkSetHardwareAddr(containerIface, mac)
 	if err != nil {
-		return nil, fmt.Errorf("Join: could not set mac address %s for container interface %s, %v", mac, containerIfaceName, err)
+		log.Errorf("Join: could not set mac address %s for container interface %s, %v", mac, containerIfaceName, err)
+		return nil, err
 	}
 
+	log.Debugf("Join: Bringing link up %+v", veth)
 	// Up the host interface after finishing all netlink configuration
 	if err := netlink.LinkSetUp(hostIface); err != nil {
-		return nil, fmt.Errorf("Join: could not set link up for host interface %s, %v", hostIfaceName, err)
+		log.Errorf("Join: could not set link up for host interface %s, %v", hostIfaceName, err)
+		return nil, err
+	}
+
+	if err := netlink.LinkSetUp(containerIface); err != nil {
+		log.Errorf("Join: could not set link up for host interface %s, %v", containerIfaceName, err)
+		return nil, err
 	}
 
 	// Configure routes
@@ -260,7 +273,8 @@ func (d *NetDriver) Join(r *netApi.JoinRequest) (*netApi.JoinResponse, error) {
 	// Configure firewall rules
 	ep.netFilter = NewNetFilter(hostIfaceName, options)
 	if err := ep.netFilter.applyFiltering(); err != nil {
-		return nil, fmt.Errorf("Join: could not add net filtering %v", err)
+		log.Errorf("Join: could not add net filtering %v", err)
+		return nil, err
 	}
 
 	respIface := netApi.InterfaceName{
@@ -268,16 +282,22 @@ func (d *NetDriver) Join(r *netApi.JoinRequest) (*netApi.JoinResponse, error) {
 		DstPrefix: ethPrefix,
 	}
 
-	sandboxRoute := &netApi.StaticRoute{
-		Destination: "0.0.0.0/0",
-		RouteType:   1, // CONNECTED
+	gwRoute := &netApi.StaticRoute{
+		Destination: fmt.Sprintf("%s/32", d.gateway),
+		RouteType:   types.CONNECTED,
 		NextHop:     "",
+	}
+
+	defaultRoute := &netApi.StaticRoute{
+		Destination: "0.0.0.0/0",
+		RouteType:   types.NEXTHOP,
+		NextHop:     d.gateway,
 	}
 
 	res := &netApi.JoinResponse{
 		InterfaceName:         respIface,
 		DisableGatewayService: true,
-		StaticRoutes:          []*netApi.StaticRoute{sandboxRoute},
+		StaticRoutes:          []*netApi.StaticRoute{gwRoute, defaultRoute},
 	}
 
 	log.Infof("Join: response %+v", res)

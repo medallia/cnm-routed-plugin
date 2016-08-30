@@ -8,6 +8,7 @@ BINARY=routed-plugin
 
 BUILD = `git rev-parse HEAD`
 BUILD_TIME=`date +%FT%T%z`
+GWIP := $(shell ip route get 8.8.8.8 | head --lines 1 | awk '{print $$7}')
 
 LDFLAGS=-ldflags "-X main.Build=${BUILD} -X main.BuildTime=${BUILD_TIME}"
 
@@ -27,7 +28,7 @@ docker-clean:
 	-@docker rmi $(docker images | grep "^<none>" | awk '{print $3}') > /dev/null 2>&1
 
 docker-run: docker-build
-	docker run -ti --privileged --net=host --rm -v /run/docker/plugins:/run/docker/plugins ${IMAGETAG} --debug
+	docker run -ti --privileged --net=host --rm -v /run/docker/plugins:/run/docker/plugins ${IMAGETAG} --gateway ${GWIP} --debug --mtu 9000
 
 .DEFAULT_GOAL: build
 .PHONY: clean, docker-clean
