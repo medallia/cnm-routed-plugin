@@ -14,7 +14,8 @@ import (
 )
 
 const (
-	version = "0.1"
+	version    = "0.1"
+	defaultMtu = 1500
 )
 
 func main() {
@@ -42,6 +43,12 @@ func main() {
 		Usage: "IP to configure as default gateway for containers",
 	}
 
+	mtu := cli.UintFlag{
+		Name:  "mtu, m",
+		Value: defaultMtu,
+		Usage: "MTU for container interfaces",
+	}
+
 	app := cli.NewApp()
 	app.Name = "routed"
 	app.Usage = "Docker routed network driver"
@@ -53,6 +60,7 @@ func main() {
 		ipamSocket,
 		netSocket,
 		gateway,
+		mtu,
 	}
 
 	app.Action = driverRun
@@ -68,8 +76,11 @@ func driverRun(c *cli.Context) {
 	gateway := c.String("gateway")
 	_, err := netlink.ParseAddr(fmt.Sprintf("%s/32", gateway))
 	if err != nil {
-		panic(err)
+		fmt.Printf("%+v\n", err)
+		os.Exit(-1)
 	}
+
+	mtu := c.Int("mtu")
 
 	messages := make(chan int)
 	var wg sync.WaitGroup
@@ -81,7 +92,8 @@ func driverRun(c *cli.Context) {
 
 		id, err := routed.NewIpamDriver(version, gateway)
 		if err != nil {
-			panic(err)
+			fmt.Printf("%+v\n", err)
+			os.Exit(-1)
 		}
 
 		log.Debugf("Startig routed ipam driver: %+v", id)
@@ -94,9 +106,10 @@ func driverRun(c *cli.Context) {
 	go func() {
 		defer wg.Done()
 
-		nd, err := routed.NewNetDriver(version, gateway)
+		nd, err := routed.NewNetDriver(version, gateway, mtu)
 		if err != nil {
-			panic(err)
+			fmt.Printf("%+v\n", err)
+			os.Exit(-1)
 		}
 
 		log.Debugf("Starting routed network driver: %+v", nd)

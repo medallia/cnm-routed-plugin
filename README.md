@@ -42,7 +42,7 @@ driver running in the host. The <host-ip> argument should be the IP address that
 corresponds to the interface in the host that you wish to use as default route.
 
 ```
-docker run -ti --privileged --net=host --rm -v /run/docker/plugins:/run/docker/plugins test/routed-plugin --gateway <host-ip> --debug
+docker run -ti --privileged --net=host --rm -v /run/docker/plugins:/run/docker/plugins test/routed-plugin --gateway <host-ip> --debug --mtu 9000
 ```
 
 Then you will need to register a routed network. Note that it uses the Ipam routed driver.

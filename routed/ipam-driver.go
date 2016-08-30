@@ -7,6 +7,7 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 	ipamApi "github.com/docker/go-plugins-helpers/ipam"
+	"github.com/docker/libnetwork/netlabel"
 	"github.com/vishvananda/netlink"
 )
 
@@ -84,7 +85,7 @@ func (d *IpamDriver) RequestPool(r *ipamApi.RequestPoolRequest) (*ipamApi.Reques
 	res := &ipamApi.RequestPoolResponse{
 		PoolID: id,
 		Pool:   cidr,
-		Data:   map[string]string{"com.docker.network.gateway": gateway},
+		Data:   map[string]string{netlabel.Gateway: gateway},
 	}
 
 	log.Infof("RequestPool: responded with %+v", res)
@@ -103,7 +104,7 @@ func (d *IpamDriver) ReleasePool(r *ipamApi.ReleasePoolRequest) error {
 func (d *IpamDriver) RequestAddress(r *ipamApi.RequestAddressRequest) (*ipamApi.RequestAddressResponse, error) {
 	log.Debugf("RequestAddress: request %+v", r)
 
-	if r.Options["RequestAddressType"] == "com.docker.network.gateway" {
+	if r.Options["RequestAddressType"] == netlabel.Gateway {
 		return nil, fmt.Errorf("RequestAddress: can't change gateway")
 	}
 
