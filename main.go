@@ -8,7 +8,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 	ipamApi "github.com/docker/go-plugins-helpers/ipam"
 	netApi "github.com/docker/go-plugins-helpers/network"
-	"github.com/medallia/docker-routed-plugin/routed"
+	"github.com/medallia/cnm-routed-plugin/routed"
 	"github.com/urfave/cli"
 	"github.com/vishvananda/netlink"
 )

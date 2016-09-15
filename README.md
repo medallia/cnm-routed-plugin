@@ -1,4 +1,4 @@
-# docker-routed-plugin
+# cnm-routed-plugin
 
 ## Features
 
@@ -63,13 +63,13 @@ docker run -ti --net=mine --ip 10.46.1.7 alpine sh
 
 ### Development env installation using Vagrant
 
-1. Create working dir for docker-routed-plugin
+1. Create working dir for cnm-routed-plugin
 
   ```
   mkdir -p ~/repos/docker-devel/go/src/github.com/medallia
   cd ~/repos/docker-devel/go/src/github.com/medallia
-  git clone http://github.com/medallia/docker-routed-plugin
-  cp docker-routed-plugin/Vagrantfile ~/repos/docker-devel
+  git clone http://github.com/medallia/cnm-routed-plugin
+  cp cnm-routed-plugin/Vagrantfile ~/repos/docker-devel
   ```
 
 2. Install vagrant (for OSX)
@@ -98,7 +98,7 @@ re-provisioned using ```vagrant up --provision```)
   sudo curl -O https://storage.googleapis.com/golang/go1.6.linux-amd64.tar.gz
   sudo tar -xvf go1.6.linux-amd64.tar.gz
   sudo mv go /usr/local
-  echo "export GOPATH=/vagrant/go:/vagrant/go/src/github.com/medallia/docker-routed-plugin" >> ~/.profile
+  echo "export GOPATH=/vagrant/go:/vagrant/go/src/github.com/medallia/cnm-routed-plugin" >> ~/.profile
   echo "export PATH=$PATH:/vagrant/go/bin:/usr/local/go/bin" >> ~/.profile
   source ~/.profile
   ```
@@ -137,7 +137,7 @@ re-provisioned using ```vagrant up --provision```)
   cd
   mkdir repos
   cd repos
-  ln -s /vagrant/go/src/github.com/medallia/docker-routed-plugin docker-plugin
+  ln -s /vagrant/go/src/github.com/medallia/cnm-routed-plugin docker-plugin
   curl -fsSLO https://get.docker.com/builds/Linux/x86_64/docker-1.12.0.tgz && tar --strip-components=1 -xvzf docker-1.12.0.tgz docker/docker && cp docker docker.ok && rm docker-1.12.0.tgz
   git clone http://github.com/docker/docker && cd docker && git checkout 8eab29edd820017901796eb60d4bea28d760f16 && cd -
   cp docker-plugin/docker-build.sh .
@@ -150,7 +150,7 @@ re-provisioned using ```vagrant up --provision```)
 
   ```
   vagrant ssh
-  cd ~/repos/docker-routed-plugin
+  cd ~/repos/cnm-routed-plugin
   make docker-run
   ```
 
@@ -178,7 +178,7 @@ If the DOCKER_DEBUG flag is used in hack/make.sh, docker will be compiled with
 
   ```
   vagrant ssh
-  cd ~/repos/docker-routed-plugin
+  cd ~/repos/cnm-routed-plugin
   make docker-run
   ```
 
@@ -211,7 +211,7 @@ If the DOCKER_DEBUG flag is used in hack/make.sh, docker will be compiled with
 
 ```
 vagrant ssh
-cd /vagrant/go/src/github.com/medallia/docker-routed-plugin/
+cd /vagrant/go/src/github.com/medallia/cnm-routed-plugin/
 govendor fetch github.com/docker/libnetwork
 ```
 
