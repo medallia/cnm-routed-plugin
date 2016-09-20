@@ -2,9 +2,13 @@
 # vi: set ft=ruby :
 
 # Enable routing container traffic through the VM, equivalent to:
+#sudo sysctl -w net.ipv4.conf.default.proxy_arp=1
+#sudo sysctl -w net.ipv4.conf.eth0.proxy_arp=1
 #sudo sysctl -w net.ipv4.ip_forward=1
-# Create iptables chains and make them persistent
+#Create iptables chains and make them persistent
 $script = <<SCRIPT
+sudo sh -c 'echo "net.ipv4.conf.default.proxy_arp=1" >> /etc/sysctl.conf'
+sudo sh -c 'echo "net.ipv4.conf.eth0.proxy_arp=1" >> /etc/sysctl.conf'
 sudo sh -c 'echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf'
 sudo service procps start
 
