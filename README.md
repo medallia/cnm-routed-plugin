@@ -87,7 +87,8 @@ If Vagrantfile is modified, then the VM will need to be
 re-provisioned using ```vagrant up --provision```)
 
   ```
-  cd cnm-routed-plugin
+  cp cnm-routed-plugin/Vagrantfile ~/repos/docker-devel
+  cd ~/repos/docker-devel
   vagrant up
   vagrant ssh
   ```
@@ -99,7 +100,7 @@ re-provisioned using ```vagrant up --provision```)
   sudo curl -O https://storage.googleapis.com/golang/go1.6.linux-amd64.tar.gz
   sudo tar -xvf go1.6.linux-amd64.tar.gz
   sudo mv go /usr/local
-  echo "export GOPATH=/vagrant/go:/vagrant/go/src/github.com/medallia/cnm-routed-plugin" >> ~/.profile
+  echo "export GOPATH=/vagrant/go" >> ~/.profile
   echo "export PATH=$PATH:/vagrant/go/bin:/usr/local/go/bin" >> ~/.profile
   source ~/.profile
   ```
@@ -107,8 +108,10 @@ re-provisioned using ```vagrant up --provision```)
 5. Install govendor in the VM
 
   ```
-  sudo apt-get install -y git
+  sudo apt-get install git
   go get -u github.com/kardianos/govendor
+  cd /vagrant/go/src/github.com/medallia/cnm-routed-plugin
+  govendor sync
   ```
 
 6. Install docker in the VM (see https://docs.docker.com/engine/installation/linux/ubuntulinux/)
@@ -132,8 +135,8 @@ re-provisioned using ```vagrant up --provision```)
 
   ```
   vagrant ssh
-  mkdir -p ~/repos/docker-devel/go/src/github.com/docker
-  cd ~/repos/docker-devel/go/src/github.com/docker
+  mkdir -p /vagrant/go/src/github.com/docker
+  cd /vagrant/go/src/github.com/docker
   git clone http://github.com/docker/docker 
   cd docker
   git checkout tags/v1.12.1
@@ -149,8 +152,6 @@ re-provisioned using ```vagrant up --provision```)
 
   ```
   vagrant ssh
-  cd ~/repos/docker-devel/go/src/github.com/medallia/cnm-routed-plugin
-  govendor sync
   make docker-build
   ```
 

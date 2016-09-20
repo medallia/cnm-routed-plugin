@@ -33,9 +33,9 @@ function teardown {
 
 @test "Check container communication" {
  
-  nohup docker run --net=test --ip-address=10.1.1.1 alpine nc -l -p 9999 -s 10.1.1.1 > $BATS_TMPDIR/routed_plugin_nc_test.out 2>&1 &
+  nohup docker run --net=test --ip=10.1.1.1 alpine nc -l -p 9999 -s 10.1.1.1 > $BATS_TMPDIR/routed_plugin_nc_test.out 2>&1 &
   echo $! > $BATS_TMPDIR/routed_plugin_nc_test.pid
-  run docker run --net=test --ip-address=10.1.1.2 alpine sh -c 'echo foo|nc 10.1.1.1 9999'
+  run docker run --net=test --ip=10.1.1.2 alpine sh -c 'echo foo|nc 10.1.1.1 9999'
   [ "$status" -eq 0 ]
 
   run cat $BATS_TMPDIR/routed_plugin_nc_test.out
@@ -66,7 +66,7 @@ function teardown {
 @test "Check nfs volume" {
 
   sudo mkdir $BATS_TMP/foo
-  nohup docker run --privileged --net=routed --ip-address=10.1.1.1 -v $BATS_TMP/foo:/srv docker.m8s.io/medallia/docker-nfs-server > $BATS_TMPDIR/routed_plugin_nfs_test.out 2>&1 &
+  nohup docker run --privileged --net=routed --ip=10.1.1.1 -v $BATS_TMP/foo:/srv docker.m8s.io/medallia/docker-nfs-server > $BATS_TMPDIR/routed_plugin_nfs_test.out 2>&1 &
   echo $! > $BATS_TMPDIR/routed_plugin_nfs_test.pid
   
   docker run -ti -v 10.1.1.1//srv:/lala:nfs,rw --net=routed --ip=10.1.1.2 ubuntu-nfs-client /bin/bash -c 'echo cow > /lala/file1.txt'
