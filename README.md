@@ -99,7 +99,7 @@ re-provisioned using ```vagrant up --provision```)
   sudo curl -O https://storage.googleapis.com/golang/go1.6.linux-amd64.tar.gz
   sudo tar -xvf go1.6.linux-amd64.tar.gz
   sudo mv go /usr/local
-  echo "export GOPATH:=/vagrant/go:/vagrant/go/src/github.com/medallia/cnm-routed-plugin" >> ~/.profile
+  echo "export GOPATH=/vagrant/go:/vagrant/go/src/github.com/medallia/cnm-routed-plugin" >> ~/.profile
   echo "export PATH=$PATH:/vagrant/go/bin:/usr/local/go/bin" >> ~/.profile
   source ~/.profile
   ```
@@ -107,6 +107,7 @@ re-provisioned using ```vagrant up --provision```)
 5. Install govendor in the VM
 
   ```
+  sudo apt-get install -y git
   go get -u github.com/kardianos/govendor
   ```
 
@@ -114,7 +115,7 @@ re-provisioned using ```vagrant up --provision```)
 
   ```
   sudo apt-get install apt-transport-https ca-certificates
-  sudo apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys 58118E89F3A912897C070ADBF762215
+  sudo apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D  
   sudo sh -c "echo 'deb https://apt.dockerproject.org/repo ubuntu-trusty main' >> /etc/apt/sources.list.d/docker.list"
   sudo apt-get update
   sudo apt-get purge lxc-docker
@@ -124,11 +125,13 @@ re-provisioned using ```vagrant up --provision```)
   sudo apt-get install docker-engine
   sudo service docker start
   sudo usermod -aG docker $USER
+  exit
   ```
 
 7. Update docker to version 1.12.1 inside the VM
 
   ```
+  vagrant ssh
   mkdir -p ~/repos/docker-devel/go/src/github.com/docker
   cd ~/repos/docker-devel/go/src/github.com/docker
   git clone http://github.com/docker/docker 
