@@ -24,7 +24,7 @@ function teardown {
 
   run docker run -ti --net=test --ip=10.1.2.3 alpine ip addr
   [ "$status" -eq 0 ]
-  [[ "${output}" == *"10.1.2.3"* ]]
+  [[ "{$output}" == *"10.1.2.3"* ]]
 
   run docker run -ti --net=test --ip=10.1.2.3 alpine ip route
   [ "$status" -eq 0 ]
@@ -44,9 +44,12 @@ function teardown {
   run kill $(<"$BATS_TMPDIR/routed_plugin_nc_test.pid")
 }
 
-@test "Check arp table size" {
+# ARP table should only contain entries for the default gw mac address 
+@test "Check arp table" {
 
-  run docker run -ti --net=test --ip=10.1.2.3 alpine sh -c "ping -c 3 8.8.8.8 > /dev/null; ping -c 3 8.8.4.4 > /dev/null; sleep 2; arp -a | wc -l"
+  run docker run -ti --net=test --ip=10.1.2.3 alpine sh -c "ping -c 3 8.8.8.8 > /dev/null; ping -c 3 8.8.4.4 > /dev/null; sleep 2; arp -a"
   [ "$status" -eq 0 ]
-  [[ "${output}" == "2"* ]]
+  [[ "${output}" == *"10.100.0.1"* ]]
+  [[ "${output}" != *"8.8.8.8"* ]]
+  [[ "${output}" != *"8.8.4.4"* ]]
 }
