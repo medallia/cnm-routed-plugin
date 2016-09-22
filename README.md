@@ -198,14 +198,6 @@ re-provisioned using ```vagrant up --provision```)
 For info on Delve see https://blog.gopheracademy.com/advent-2015/debugging-with-delve
 and https://github.com/derekparker/delve/tree/master/Documentation/cli
 
-Note: You might need to comment lines 166-168 (if [ -z "$DOCKER_DEBUG" ]; then..)
-in the hach/make.sh file at docker repository, then recompile and reinstall
-docker in your VM.
-If the DOCKER_DEBUG flag is used in hack/make.sh, docker will be compiled with
-`go build -ldflags -w` (See hack/make/.binary) and this prevents the
-.debug_frame section from appearing in the docker demon binary (See https://github.com/derekparker/delve/issues/467).
-
-
 1. Install delve (go debugging tool) in the VM
 
   ```
