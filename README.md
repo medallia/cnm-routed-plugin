@@ -38,17 +38,19 @@ interface eth1
 ```
 
 To launch a container using the routed mode, you first need to have the routed
-driver running in the host. The <host-ip> argument should be the IP address that
-corresponds to the interface in the host that you wish to use as default route.
+driver running in the host. The <gw-ip> argument is the IP address that will 
+be configured as next hop for the default route inside the container. This IP
+can be a virtual (non-assigned) IP address, if the host does ARP proxying, or 
+correspond to an actual interface in the host.  
 
 ```
-docker run -ti --privileged --net=host --rm -v /run/docker/plugins:/run/docker/plugins test/routed-plugin --gateway <host-ip> --debug --mtu 9000
+docker run -ti --privileged --net=host --rm -v /run/docker/plugins:/run/docker/plugins routed-plugin --gateway <gw-ip> --debug --mtu 9000
 ```
 
-Then you will need to register a routed network. Note that it uses the Ipam routed driver.
+Then you will need to register a routed network. Note that it also uses the Ipam routed driver.
 
 ```
-docker network create --internal --driver=net-routed --ipam-driver=ipam-routed --subnet 10.46.1.0/16 mine
+docker network create --internal --driver=net-routed --ipam-driver=ipam-routed --subnet 10.1.0.0/16 mine
 ```
 
 Finally, you can run a container attached to the routed network you created previously.
@@ -56,20 +58,19 @@ You will need to specify the ip address to assign to the container endpoint usin
 --ip label.  
 
 ```
-docker run -ti --net=mine --ip 10.46.1.7 alpine sh
+docker run -ti --net=mine --ip 10.1.0.2 alpine sh
 ```
 
 ## Contributing
 
 ### Development env installation using Vagrant
 
-1. Create working dir for cnm-routed-plugin
+1. Create working directory for cnm-routed-plugin
 
   ```
   mkdir -p ~/repos/docker-devel/go/src/github.com/medallia
   cd ~/repos/docker-devel/go/src/github.com/medallia
   git clone http://github.com/medallia/cnm-routed-plugin
-  cp cnm-routed-plugin/Vagrantfile ~/repos/docker-devel
   ```
 
 2. Install vagrant (for OSX)
@@ -81,11 +82,12 @@ docker run -ti --net=mine --ip 10.46.1.7 alpine sh
   ```
 
 3. Initialize your vagrant VM. (Note that the Vagrantfile includes instructions
-to configure ip4 forwarding and iptables chains on VM provision.
-If this script is modified in the Vagrantfile, the VM will need to be
+to configure ARP proxy, ip4 forwarding and iptables chains on VM provision.
+If Vagrantfile is modified, then the VM will need to be
 re-provisioned using ```vagrant up --provision```)
 
   ```
+  cp cnm-routed-plugin/Vagrantfile ~/repos/docker-devel
   cd ~/repos/docker-devel
   vagrant up
   vagrant ssh
@@ -98,7 +100,7 @@ re-provisioned using ```vagrant up --provision```)
   sudo curl -O https://storage.googleapis.com/golang/go1.6.linux-amd64.tar.gz
   sudo tar -xvf go1.6.linux-amd64.tar.gz
   sudo mv go /usr/local
-  echo "export GOPATH=/vagrant/go:/vagrant/go/src/github.com/medallia/cnm-routed-plugin" >> ~/.profile
+  echo "export GOPATH=/vagrant/go" >> ~/.profile
   echo "export PATH=$PATH:/vagrant/go/bin:/usr/local/go/bin" >> ~/.profile
   source ~/.profile
   ```
@@ -106,21 +108,18 @@ re-provisioned using ```vagrant up --provision```)
 5. Install govendor in the VM
 
   ```
+  sudo apt-get install git
   go get -u github.com/kardianos/govendor
+  cd /vagrant/go/src/github.com/medallia/cnm-routed-plugin
+  govendor sync
   ```
 
-6. Install delve (go debugging tool) in the VM
-
-  ```
-  go get github.com/derekparker/delve/cmd/dlv
-  ```
-
-7. Install docker in the VM (see https://docs.docker.com/engine/installation/linux/ubuntulinux/)
+6. Install docker in the VM (see https://docs.docker.com/engine/installation/linux/ubuntulinux/)
 
   ```
   sudo apt-get install apt-transport-https ca-certificates
-  sudo apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys 58118E89F3A912897C070ADBF762215
-  sudo vim /etc/apt/sources.list.d/docker.list # add deb https://apt.dockerproject.org/repo ubuntu-trusty main
+  sudo apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D  
+  sudo sh -c "echo 'deb https://apt.dockerproject.org/repo ubuntu-trusty main' >> /etc/apt/sources.list.d/docker.list"
   sudo apt-get update
   sudo apt-get purge lxc-docker
   apt-cache policy docker-engine
@@ -129,37 +128,69 @@ re-provisioned using ```vagrant up --provision```)
   sudo apt-get install docker-engine
   sudo service docker start
   sudo usermod -aG docker $USER
+  exit
   ```
 
-8. Finish setting up your development env in the VM
+7. Update docker to version 1.12.1 inside the VM
 
   ```
-  cd
-  mkdir repos
-  cd repos
-  ln -s /vagrant/go/src/github.com/medallia/cnm-routed-plugin docker-plugin
-  curl -fsSLO https://get.docker.com/builds/Linux/x86_64/docker-1.12.0.tgz && tar --strip-components=1 -xvzf docker-1.12.0.tgz docker/docker && cp docker docker.ok && rm docker-1.12.0.tgz
-  git clone http://github.com/docker/docker && cd docker && git checkout 8eab29edd820017901796eb60d4bea28d760f16 && cd -
-  cp docker-plugin/docker-build.sh .
-  sudo bash docker-build.sh
+  vagrant ssh
+  mkdir -p /vagrant/go/src/github.com/docker
+  cd /vagrant/go/src/github.com/docker
+  git clone http://github.com/docker/docker 
+  cd docker
+  git checkout tags/v1.12.1
+  make binary
+  sudo service docker stop
+  sudo cp bundles/latest/binary-*/docker* /usr/bin/
+  sudo service docker start
   ```
 
 ### Usage
 
-1. Build plugin docker image and run the driver
+1. Build the docker image for the plugin
 
   ```
   vagrant ssh
-  cd ~/repos/cnm-routed-plugin
+  make docker-build
+  ```
+
+2. Then launch the routed driver as a docker container
+
+  ```
   make docker-run
   ```
 
-2. Test network creation (in another terminal)
+3. In another terminal create a routed network
 
   ```
   vagrant ssh
-  docker network create --internal --driver=net-routed --ipam-driver=ipam-routed --subnet 10.46.0.0/16  mine
-  docker run -ti --net=mine --ip 10.46.1.7 alpine sh
+  docker network create --internal --driver=net-routed --ipam-driver=ipam-routed --subnet 10.1.0.0/16  mine
+  docker run -ti --net=mine --ip 10.1.0.3 alpine sh
+  ```
+
+### Testing
+
+1. Install bats
+
+  ```
+  vagrant ssh
+  git clone https://github.com/sstephenson/bats.git
+  cd bats
+  sudo ./install.sh /usr/local
+  cd /vagrant/go/src/github.com/medallia/cnm-routed-plugin
+  ```
+
+2. Run integration tests
+
+  ```
+  make integration 
+  ```
+
+3. Run unit tests with coverage
+
+  ```
+  make coverage 
   ```
 
 ### Debugging with Delve
@@ -167,38 +198,38 @@ re-provisioned using ```vagrant up --provision```)
 For info on Delve see https://blog.gopheracademy.com/advent-2015/debugging-with-delve
 and https://github.com/derekparker/delve/tree/master/Documentation/cli
 
-Note: You might need to comment lines 166-168 (if [ -z "$DOCKER_DEBUG" ]; then..)
-in the hach/make.sh file at docker repo and recompile and reinstall docker using
- the docker-build.sh script.
-If the DOCKER_DEBUG flag is used in hack/make.sh, docker will be compiled with
-`go build -ldflags -w` (See hack/make/.binary) and this prevents the
-.debug_frame section from appearing in the docker demon binary (See https://github.com/derekparker/delve/issues/467).
+1. Install delve (go debugging tool) in the VM
 
-1. Run the plugin in a terminal
+  ```
+  go get github.com/derekparker/delve/cmd/dlv
+  ```
+
+2. Run the plugin in a terminal
 
   ```
   vagrant ssh
-  cd ~/repos/cnm-routed-plugin
-  make docker-run
+  docker run --privileged --net=host --rm -v /run/docker/plugins:/run/docker/plugins routed-plugin --gateway 10.100.0.1 --mtu 9000 --debug
   ```
 
-2. In another terminal, attach delve to the plugin process. For breakpoint syntax see https://github.com/derekparker/delve/issues/528
+2. In another terminal, attach delve to the driver process. For breakpoint syntax see https://github.com/derekparker/delve/issues/528
 
   ```
   vagrant ssh
   sudo su
-  export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/vagrant/go/bin:/usr/local/go/bin:/vagrant/go/bin:/usr/local/go/bin
+  export PATH=$PATH:/vagrant/bin:/vagrant/go/bin:/usr/local/go/bin
+  export GOPATH=/vagrant/go
   dlv attach $(ps -A -o pid,cmd|grep " ./routed-plugin --debug" | grep -v grep |head -n 1 | awk '{print $1}')
   (dlv) break /routed.*CreateNetwork/
   (dlv) break /routed.*DeleteNetwork/
   (dlv) break /routed.*NewNetDriver/
   ```
 
-3. From yet another terminal, create a routed network in a docker container
+3. From yet another terminal, create a routed network and run your container
 
   ```
   vagrant ssh
-  docker network create --internal --driver=net-routed --ipam-driver=ipam-routed --subnet 10.46.0.0/16  mine
+  docker network create --internal --driver=net-routed --ipam-driver=ipam-routed --subnet 10.1.0.0/16  mine
+  docker run -ti --net=mine --ip 10.1.0.3 alpine sh
   ```
 
 4. Now you can debug in the delve terminal
