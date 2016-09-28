@@ -64,7 +64,7 @@ docker run -ti --net=mine --ip 10.1.0.2 alpine sh
 Configuration of IP aliases, iptables ingress rules and NIC MTU is possible using --net-opt options.
 
 ```
-docker run -ti --net=mynet --ip 10.46.1.7 --net-opt com.medallia.routed.network.ingressAllowed="192.168.1.0/24,2.2.2.2" --net-opt com.medallia.routed.network.mtu=1500 --net-opt com.medallia.routed.network.ipAliases="192.168.255.254/32,192.168.255.255/32" --rm alpine sh
+docker run -ti --net=mynet --ip 10.1.0.2 --net-opt com.medallia.routed.network.ingressAllowed="192.168.1.0/24,2.2.2.2" --net-opt com.medallia.routed.network.mtu=1500 --net-opt com.medallia.routed.network.ipAliases="192.168.255.254/32,192.168.255.255/32" --rm alpine sh
 ```
 
 Manual configuration of the following iptables rules in the host is necessary for the com.medallia.routed.network.ingressAllowed option to work correctly.
