@@ -88,6 +88,7 @@ type EndpointInterface struct {
 	Address     string
 	AddressIPv6 string
 	MacAddress  string
+	IPAliases   []string
 }
 
 // DeleteEndpointRequest is sent by the daemon when an endpoint needs to be removed

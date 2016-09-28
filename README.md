@@ -44,7 +44,7 @@ can be a virtual (non-assigned) IP address, if the host does ARP proxying, or
 correspond to an actual interface in the host.  
 
 ```
-docker run -ti --privileged --net=host --rm -v /run/docker/plugins:/run/docker/plugins routed-plugin --gateway <gw-ip> --debug --mtu 9000
+docker run -ti --privileged --net=host --rm -v /run/docker/plugins:/run/docker/plugins routed-plugin --gateway <gw-ip> --mtu 9000 --debug
 ```
 
 Then you will need to register a routed network. Note that it also uses the Ipam routed driver.

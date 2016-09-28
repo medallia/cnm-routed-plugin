@@ -47,7 +47,7 @@ function teardown {
   docker rm routed-nc-test
 }
 
-# ARP table should only contain entries for the default gw mac address 
+# ARP table should only contain entries for the default gw mac address
 @test "Check arp table" {
 
   run docker run --rm -ti --net=test --ip=10.1.2.3 alpine sh -c "ping -c 3 8.8.8.8 > /dev/null; ping -c 3 8.8.4.4 > /dev/null; sleep 2; arp -a"
@@ -55,4 +55,17 @@ function teardown {
   [[ "${output}" == *"10.100.0.1"* ]]
   [[ "${output}" != *"8.8.8.8"* ]]
   [[ "${output}" != *"8.8.4.4"* ]]
+}
+
+@test "Check mtu" {
+
+  run docker run --rm -ti --net=test --ip=10.1.2.3 alpine sh -c "ip a"
+  [ "$status" -eq 0 ]
+  # default mtu
+  [[ "${output}" == *"mtu 9000"* ]]
+
+  run docker run --rm -ti --net=test --ip=10.1.2.3 --net-opt com.medallia.routed.network.mtu=1500 alpine sh -c "ip a"
+  [ "$status" -eq 0 ]
+  # custom mtu
+  [[ "${output}" == *"mtu 1500"* ]]
 }

@@ -3,6 +3,7 @@ package routed
 import (
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -19,6 +20,10 @@ const (
 	vethPrefix     = "vethr"
 	ethPrefix      = "eth"
 	defaultGwIface = "eth0"
+	routedPrefix   = "com.medallia.routed.network"
+	ipAliases      = routedPrefix + ".ipAliases"
+	mtuValue       = routedPrefix + ".mtu"
+	ingressAllowed = routedPrefix + ".ingressAllowed"
 )
 
 type routedNetwork struct {
@@ -33,6 +38,7 @@ type routedEndpoint struct {
 	macAddress         net.HardwareAddr
 	ipv4Address        *net.IPNet
 	netFilter          *netFilter
+	ipAliases          []*net.IPNet
 }
 
 type NetDriver struct {
@@ -96,6 +102,7 @@ func (d *NetDriver) CreateEndpoint(r *netApi.CreateEndpointRequest) (*netApi.Cre
 
 	eid := r.EndpointID
 	ifInfo := r.Interface
+	opts := r.Options
 
 	network := d.network
 	network.m.Lock()
@@ -103,13 +110,168 @@ func (d *NetDriver) CreateEndpoint(r *netApi.CreateEndpointRequest) (*netApi.Cre
 
 	log.Debugf("CreateEndpoint: Requested Interface %+v", ifInfo)
 	addr, _ := netlink.ParseIPNet(ifInfo.Address)
-	ep := &routedEndpoint{
-		ipv4Address: addr,
+
+	// Generate host-side veth name
+	hostIfaceName, err := generateIfaceName(vethPrefix + string(eid)[:4])
+	if err != nil {
+		return nil, err
 	}
+
+	// Generate container-side veth name
+	containerIfaceName, err := generateIfaceName(vethPrefix + string(eid)[:4])
+	if err != nil {
+		return nil, err
+	}
+
+	veth := &netlink.Veth{
+		LinkAttrs: netlink.LinkAttrs{
+			Name:   hostIfaceName,
+			TxQLen: 0,
+		},
+		PeerName: containerIfaceName,
+	}
+
+	// create veth
+	log.Debugf("CreateEndpoint: Adding link %+v", veth)
+	if err := netlink.LinkAdd(veth); err != nil {
+		log.Errorf("CreateEndpoint: Unable to add link %+v:%+v", veth, err)
+		return nil, err
+	}
+
+	hostIface, _ := netlink.LinkByName(hostIfaceName)
+	if err != nil {
+		log.Errorf("CreateEndpoint: Can't find host interface %s", hostIfaceName)
+		return nil, err
+	}
+	defer func() {
+		if err != nil {
+			log.Infof("CreateEndpoint: Deleting host interface %s", hostIfaceName)
+			netlink.LinkDel(hostIface)
+		}
+	}()
+
+	containerIface, _ := netlink.LinkByName(containerIfaceName)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err != nil {
+			log.Infof("CreateEndpoint: Deleting container interface %s", containerIfaceName)
+			netlink.LinkDel(containerIface)
+		}
+	}()
+
+	// Set MTU for interfaces
+	mtu := d.mtu
+	if val, ok := opts[mtuValue]; ok {
+		mtu, err = strconv.Atoi(val.(string))
+
+		if err != nil {
+			log.Errorf("CreateEndpoint: Error setting the MTU value %+v, %s", val, err)
+			return nil, err
+		}
+	}
+
+	if mtu != 0 {
+		log.Debugf("CreateEndpoint: Setting MTU %+v on %+v", mtu, veth)
+
+		if err := netlink.LinkSetMTU(hostIface, mtu); err != nil {
+			log.Errorf("CreateEndpoint: Error setting the MTU %s", err)
+			return nil, err
+		}
+
+		if err := netlink.LinkSetMTU(containerIface, mtu); err != nil {
+			log.Errorf("CreateEndpoint: Error setting the MTU %s", err)
+			return nil, err
+		}
+	}
+
+	// Put down the interface before configuring mac address.
+	if err := netlink.LinkSetDown(containerIface); err != nil {
+		log.Errorf("CreateEndpoint: could not set link down for container interface %s, %v", containerIfaceName, err)
+		return nil, err
+	}
+
+	var imac net.HardwareAddr
+	if opt, ok := opts[netlabel.MacAddress]; ok {
+		if mac, ok := opt.(net.HardwareAddr); ok {
+			log.Debugf("CreateEndpoint: Using Mac Address %s", mac)
+			imac = mac
+		}
+	}
+	// Set the sbox's MAC. If specified, use the one configured by user, otherwise generate one based on IP.
+	mac := electMacAddress(imac, addr.IP)
+
+	err = netlink.LinkSetHardwareAddr(containerIface, mac)
+	if err != nil {
+		log.Errorf("CreateEndpoint: could not set mac address %s for container interface %s, %v", mac, containerIfaceName, err)
+		return nil, err
+	}
+
+	log.Debugf("CreateEndpoint: Bringing link up %+v", veth)
+	// Up the host interface after finishing all netlink configuration
+	if err := netlink.LinkSetUp(hostIface); err != nil {
+		log.Errorf("CreateEndpoint: could not set link up for host interface %s, %v", hostIfaceName, err)
+		return nil, err
+	}
+
+	if err := netlink.LinkSetUp(containerIface); err != nil {
+		log.Errorf("CreateEndpoint: could not set link up for host interface %s, %v", containerIfaceName, err)
+		return nil, err
+	}
+
+	ep := &routedEndpoint{
+		hostInterfaceName:  hostIfaceName,
+		containerIfaceName: containerIfaceName,
+		macAddress:         mac,
+		ipv4Address:        addr,
+	}
+
+	// Add IP aliases
+	if aliasesString, ok := opts[ipAliases]; ok {
+
+		aliases := strings.Split(aliasesString.(string), ",")
+		ep.ipAliases = make([]*net.IPNet, 0, len(aliases))
+
+		for _, ips := range aliases {
+
+			ifInfo.IPAliases = append(ifInfo.IPAliases, ips)
+			alias, err := types.ParseCIDR(ips)
+
+			if err != nil {
+				log.Errorf("CreateEndpoint: wrong IP alias %s for interface", ips)
+				return nil, err
+			}
+			ep.ipAliases = append(ep.ipAliases, alias)
+		}
+	}
+
+	// Configure firewall rules
+	if configString, ok := opts[ingressAllowed]; ok {
+
+		config, err := NetFilterConfigParse(configString.(string))
+		if err != nil {
+			log.Errorf("CreateEndpoint: could not parse net filtering %v", err)
+			return nil, err
+		}
+
+		ep.netFilter = NewNetFilter(hostIfaceName, config)
+		if err := ep.netFilter.applyFiltering(); err != nil {
+			log.Errorf("CreateEndpoint: could not add net filtering %v", err)
+			return nil, err
+		}
+	}
+
 	d.network.endpoints[eid] = ep
+
 	log.Infof("CreateEndpoint: created endpoint %s", eid)
 
-	return nil, nil
+	ifInfo.Address = ""
+	res := &netApi.CreateEndpointResponse{
+		Interface: ifInfo,
+	}
+
+	return res, nil
 }
 
 func (d *NetDriver) DeleteEndpoint(r *netApi.DeleteEndpointRequest) error {
@@ -145,7 +307,7 @@ func (d *NetDriver) DeleteEndpoint(r *netApi.DeleteEndpointRequest) error {
 }
 
 func (d *NetDriver) EndpointInfo(r *netApi.InfoRequest) (*netApi.InfoResponse, error) {
-	log.Debugf("EndpointInfo: reuqest %+v:", r)
+	log.Debugf("EndpointInfo: request %+v:", r)
 	res := &netApi.InfoResponse{Value: map[string]string{}}
 	return res, nil
 }
@@ -155,130 +317,33 @@ func (d *NetDriver) Join(r *netApi.JoinRequest) (*netApi.JoinResponse, error) {
 
 	eid := r.EndpointID
 	network := d.network
-	options := r.Options
 
 	network.m.Lock()
 	defer network.m.Unlock()
 
 	ep := d.network.endpoints[eid]
 
-	// Generate host-side veth name
-	hostIfaceName, err := generateIfaceName(vethPrefix + string(eid)[:4])
+	hostIface, err := netlink.LinkByName(ep.hostInterfaceName)
 	if err != nil {
-		return nil, err
-	}
-
-	// Generate container-side veth name
-	containerIfaceName, err := generateIfaceName(vethPrefix + string(eid)[:4])
-	if err != nil {
-		return nil, err
-	}
-
-	veth := &netlink.Veth{
-		LinkAttrs: netlink.LinkAttrs{
-			Name:   hostIfaceName,
-			TxQLen: 0,
-		},
-		PeerName: containerIfaceName,
-	}
-
-	// create veth
-	log.Debugf("Join: Adding link %+v", veth)
-	if err := netlink.LinkAdd(veth); err != nil {
-		log.Errorf("Join: Unable to add link %+v:%+v", veth, err)
-		return nil, err
-	}
-
-	hostIface, _ := netlink.LinkByName(hostIfaceName)
-	if err != nil {
-		log.Errorf("Join: Can't find host interface %s", hostIfaceName)
+		log.Errorf("CreateEndpoint: Can't find host interface %s", ep.hostInterfaceName)
 		return nil, err
 	}
 	defer func() {
 		if err != nil {
-			log.Infof("Join: Deleting host interface %s", hostIfaceName)
+			log.Infof("CreateEndpoint: Deleting host interface %s", ep.hostInterfaceName)
 			netlink.LinkDel(hostIface)
 		}
 	}()
 
-	containerIface, _ := netlink.LinkByName(containerIfaceName)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		if err != nil {
-			log.Infof("Join: Deleting container interface %s", containerIfaceName)
-			netlink.LinkDel(containerIface)
-		}
-	}()
-
-	if d.mtu != 0 {
-		log.Debugf("Join: Setting mtu %+v on %+v", d.mtu, veth)
-
-		if err := netlink.LinkSetMTU(hostIface, d.mtu); err != nil {
-			log.Errorf("Join: Error setting the MTU %s", err)
-			return nil, err
-		}
-
-		if err := netlink.LinkSetMTU(containerIface, d.mtu); err != nil {
-			log.Errorf("Join: Error setting the MTU %s", err)
-			return nil, err
-		}
-	}
-
-	// Down the interface before configuring mac address.
-	if err := netlink.LinkSetDown(containerIface); err != nil {
-		log.Errorf("Join: could not set link down for container interface %s, %v", containerIfaceName, err)
-		return nil, err
-	}
-
-	var imac net.HardwareAddr
-	if opt, ok := options[netlabel.MacAddress]; ok {
-		if mac, ok := opt.(net.HardwareAddr); ok {
-			log.Debugf("Join: Using Mac Address %s", mac)
-			imac = mac
-		}
-	}
-	// Set the sbox's MAC. If specified, use the one configured by user, otherwise generate one based on IP.
-	mac := electMacAddress(imac, ep.ipv4Address.IP)
-
-	err = netlink.LinkSetHardwareAddr(containerIface, mac)
-	if err != nil {
-		log.Errorf("Join: could not set mac address %s for container interface %s, %v", mac, containerIfaceName, err)
-		return nil, err
-	}
-
-	log.Debugf("Join: Bringing link up %+v", veth)
-	// Up the host interface after finishing all netlink configuration
-	if err := netlink.LinkSetUp(hostIface); err != nil {
-		log.Errorf("Join: could not set link up for host interface %s, %v", hostIfaceName, err)
-		return nil, err
-	}
-
-	if err := netlink.LinkSetUp(containerIface); err != nil {
-		log.Errorf("Join: could not set link up for host interface %s, %v", containerIfaceName, err)
-		return nil, err
-	}
-
-	// Configure routes
+	// Configure routes on host side
 	routeAdd(ep.ipv4Address, hostIface)
-
-	//for _, ipa := range ep.ipAliases {
-	//	routeAdd(ipa, iface)
-	//}
-
-	ep.hostInterfaceName = hostIfaceName
-	ep.containerIfaceName = containerIfaceName
-
-	// Configure firewall rules
-	ep.netFilter = NewNetFilter(hostIfaceName, options)
-	if err := ep.netFilter.applyFiltering(); err != nil {
-		log.Errorf("Join: could not add net filtering %v", err)
-		return nil, err
+	for _, ipa := range ep.ipAliases {
+		routeAdd(ipa, hostIface)
 	}
 
+	// Configure routes on container side
 	respIface := netApi.InterfaceName{
-		SrcName:   containerIfaceName,
+		SrcName:   ep.containerIfaceName,
 		DstPrefix: ethPrefix,
 	}
 
