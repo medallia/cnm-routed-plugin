@@ -38,9 +38,9 @@ interface eth1
 ```
 
 To launch a container using the routed mode, you first need to have the routed
-driver running in the host. The <gw-ip> argument is the IP address that will 
+driver running in the host. The <gw-ip> argument is the IP address that will
 be configured as next hop for the default route inside the container. This IP
-can be a virtual (non-assigned) IP address, if the host does ARP proxying, or 
+can be a virtual (non-assigned) IP address, if the host does ARP proxying, or
 correspond to an actual interface in the host.  
 
 ```
@@ -59,6 +59,28 @@ You will need to specify the ip address to assign to the container endpoint usin
 
 ```
 docker run -ti --net=mine --ip 10.1.0.2 alpine sh
+```
+
+Configuration of IP aliases, iptables ingress rules and NIC MTU is possible using --net-opt options.
+
+```
+docker run -ti --net=mynet --ip 10.46.1.7 --net-opt com.medallia.routed.network.ingressAllowed="192.168.1.0/24,2.2.2.2" --net-opt com.medallia.routed.network.mtu=1500 --net-opt com.medallia.routed.network.ipAliases="192.168.255.254/32,192.168.255.255/32" --rm alpine sh
+```
+
+Manual configuration of the following iptables rules in the host is necessary for the com.medallia.routed.network.ingressAllowed option to work correctly.
+
+```
+sudo iptables -N CONTAINERS
+sudo iptables -A CONTAINERS -j RETURN
+
+sudo iptables -N CONTAINER-REJECT
+sudo iptables -A CONTAINER-REJECT -p tcp -j REJECT --reject-with tcp-reset
+sudo iptables -A CONTAINER-REJECT -j REJECT
+
+sudo iptables -I FORWARD 1 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+sudo iptables -I FORWARD 2 -p icmp -j ACCEPT
+sudo iptables -I FORWARD 3 -m state --state INVALID -j DROP
+sudo iptables -I FORWARD 4 -j CONTAINERS
 ```
 
 ## Contributing
@@ -137,7 +159,7 @@ re-provisioned using ```vagrant up --provision```)
   vagrant ssh
   mkdir -p /vagrant/go/src/github.com/docker
   cd /vagrant/go/src/github.com/docker
-  git clone http://github.com/docker/docker 
+  git clone http://github.com/docker/docker
   cd docker
   git checkout tags/v1.12.1
   make binary
@@ -184,13 +206,13 @@ re-provisioned using ```vagrant up --provision```)
 2. Run integration tests
 
   ```
-  make integration 
+  make integration
   ```
 
 3. Run unit tests with coverage
 
   ```
-  make coverage 
+  make coverage
   ```
 
 ### Debugging with Delve
