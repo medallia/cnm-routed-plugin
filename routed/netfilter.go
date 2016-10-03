@@ -82,21 +82,14 @@ func NetFilterConfigParse(ingressAllowedString string) (*netFilterConfig, error)
 	}
 }
 
-func NewNetFilter(ifaceName string, epOptions map[string]interface{}) *netFilter {
-	log.Debugf("New NetFilter for iface %s and options %s", ifaceName, epOptions)
+func NewNetFilter(ifaceName string, config *netFilterConfig) *netFilter {
+	log.Debugf("New NetFilter for iface %s and config %+v", ifaceName, config)
 
-	// TODO: Fix
-	//ingressFiltering := epOptions[netlabel.IngressAllowed].(*netFilterConfig)
-	//if ingressFiltering == nil {
-	//	log.Info("NetFilter: No network ingress filtering specified")
-	//}
-
-	//return &netFilter{ifaceName, ingressFiltering}
-	return &netFilter{ifaceName, nil}
+	return &netFilter{ifaceName, config}
 }
 
 func chainExists(chainName string) bool {
-	return iptables.Exists("", chainName, "-N", chainName)
+	return iptables.ExistChain(chainName, iptables.Filter)
 }
 
 func (n *netFilter) applyFiltering() error {
